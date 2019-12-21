@@ -16,6 +16,11 @@ import (
 )
 
 func main() {
+	const (
+		envAPIBase = "WA_URL"
+		envTorPort = "TOR_SOCKS_PORT"
+	)
+
 	// Setup logging
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 	debug := log.New(ioutil.Discard, "DEBUG ", log.LstdFlags)
@@ -23,23 +28,22 @@ func main() {
 	// Setup flags (but defer parsing them until after the help system is setup so
 	// that we can set the usage function to use the help system).
 	var (
-		verbose bool
+		verbose = false
+		apiBase = envOrDef(envAPIBase, "https://write.as/api")
+		torPort = intEnv(envTorPort)
 	)
 	flags := flag.NewFlagSet("blog", flag.ContinueOnError)
 	flags.BoolVar(&verbose, "v", false, "Enables verbose debug logging")
+	flags.StringVar(&apiBase, "url", apiBase, "The base API URL, overrides $"+envAPIBase)
+	flags.IntVar(&torPort, "orport", torPort, "The port of a local Tor SOCKS proxy, overrides $"+envTorPort)
 
 	// Setup the CLI
 	cmds := &cli.Command{
 		Usage: fmt.Sprintf("%s <command>", os.Args[0]),
 		Flags: flags,
-		Commands: []*cli.Command{{
-			Usage:       `export [arguments]`,
-			Description: `Exports Markdown files to posts on write.as.`,
-			Run: func(c *cli.Command, args ...string) error {
-				panic("export: not yet implemented")
-				return nil
-			},
-		}},
+		Commands: []*cli.Command{
+			tokenCmd(apiBase, torPort, logger, debug),
+		},
 	}
 
 	// Setup the help system and add it to the CLI and flag handling error logic.
