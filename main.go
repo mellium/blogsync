@@ -2,7 +2,7 @@
 // Use of this source code is governed by the BSD 2-clause
 // license that can be found in the LICENSE file.
 
-// The blog command exports posts in Markdown format to write.as.
+// The blogsync command exports posts in Markdown format to write.as.
 package main
 
 import (

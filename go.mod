@@ -1,4 +1,4 @@
-module mellium.im/blog
+module mellium.im/blogsync
 
 go 1.13
 
