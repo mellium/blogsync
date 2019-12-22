@@ -84,7 +84,7 @@ Expects an API token to be exported as $%s.`, envToken),
 
 				title := meta.GetString("title")
 				if title == "" {
-					logger.Printf("invalid or empty title in %s, skipping")
+					logger.Printf("invalid or empty title in %s, skipping", path)
 					return nil
 				}
 				created := meta.GetTime("date")
