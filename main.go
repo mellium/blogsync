@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/BurntSushi/toml"
 	"github.com/writeas/go-writeas/v2"
 	"mellium.im/cli"
 )
@@ -21,6 +22,21 @@ const (
 	envToken   = "WA_TOKEN"
 	envTorPort = "TOR_SOCKS_PORT"
 )
+
+// Config holds site configuration.
+type Config struct {
+	BaseURL      string `toml:"baseURL"`
+	Collection   string `toml:"collection"`
+	LanguageCode string `toml:"languageCode"`
+	Title        string `toml:"title"`
+	Tmpl         string `toml:"tmpl"`
+
+	Author []struct {
+		Name  string `toml:"name"`
+		Email string `toml:"email"`
+		URI   string `toml:"uri"`
+	} `toml:"author"`
+}
 
 func main() {
 	// Setup logging
@@ -32,12 +48,14 @@ func main() {
 		verbose = false
 		torPort = intEnv(envTorPort)
 		apiBase = envOrDef(envAPIBase, "https://write.as/api")
+		config  = ""
 	)
 	flags := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	flags.Usage = func() {}
 	flags.BoolVar(&verbose, "v", false, "Enables verbose debug logging")
 	flags.IntVar(&torPort, "orport", torPort, "The port of a local Tor SOCKS proxy, overrides $"+envTorPort)
 	flags.StringVar(&apiBase, "url", apiBase, "The base API URL, overrides $"+envAPIBase)
+	flags.StringVar(&config, "config", config, `The config file to load (defaults to "config.toml"`)
 
 	// Parse flags and perform setup based on global flags such as enabling
 	// verbose logging and creating a write.as client.
@@ -56,6 +74,16 @@ func main() {
 		debug.SetOutput(os.Stderr)
 	}
 
+	siteConfig := Config{}
+	cfgFile := config
+	if cfgFile == "" {
+		cfgFile = "config.toml"
+	}
+	_, err = toml.DecodeFile(cfgFile, &siteConfig)
+	if err != nil && config != "" {
+		logger.Fatalf("error loading %s: %v", cfgFile, err)
+	}
+
 	client := writeas.NewClientWith(writeas.Config{
 		URL:     apiBase,
 		Token:   os.Getenv(envToken),
@@ -71,7 +99,7 @@ To get a token, use the "token" command.`, os.Args[0], envToken),
 		Flags: flags,
 		Commands: []*cli.Command{
 			collectionsCmd(client, logger, debug),
-			publishCmd(client, logger, debug),
+			publishCmd(siteConfig, client, logger, debug),
 			tokenCmd(apiBase, torPort, logger, debug),
 		},
 	}

@@ -9,6 +9,13 @@ import (
 	"strconv"
 )
 
+func orDef(val, def string) string {
+	if val == "" {
+		return def
+	}
+	return val
+}
+
 func envOrDef(key, def string) string {
 	e := os.Getenv(key)
 	if e == "" {

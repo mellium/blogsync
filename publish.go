@@ -20,16 +20,16 @@ import (
 	"mellium.im/cli"
 )
 
-func publishCmd(client *writeas.Client, logger, debug *log.Logger) *cli.Command {
+func publishCmd(siteConfig Config, client *writeas.Client, logger, debug *log.Logger) *cli.Command {
 	var (
 		collection string
 		content    = "content/"
 		tmpl       = "{{.Body}}"
 	)
 	flags := flag.NewFlagSet("publish", flag.ContinueOnError)
-	flags.StringVar(&collection, "collection", collection, "The default collection for posts that don't include `collection' in their frontmatter")
+	flags.StringVar(&collection, "collection", siteConfig.Collection, "The default collection for posts that don't include `collection' in their frontmatter")
 	flags.StringVar(&content, "content", content, "A directory containing pages and posts")
-	flags.StringVar(&tmpl, "tmpl", tmpl, "A template using Go's html/template format, to load from a file use @filename")
+	flags.StringVar(&tmpl, "tmpl", orDef(siteConfig.Tmpl, tmpl), "A template using Go's html/template format, to load from a file use @filename")
 
 	return &cli.Command{
 		Usage: "publish [options]",
