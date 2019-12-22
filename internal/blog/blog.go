@@ -90,9 +90,19 @@ func (m *Metadata) Decode(f io.Reader) error {
 	return err
 }
 
-// Get returns the value parsed for the given key, and whether or not the key
-// actually exited in the metadata.
-func (m *Metadata) Get(key string) (interface{}, bool) {
+// Get returns the value parsed for the given key, or a nil value.
+func (m *Metadata) Get(key string) interface{} {
+	val, _ := m.get(key)
+	return val
+}
+
+// Has returns whether or not the key actually exists in the metadata.
+func (m *Metadata) Has(key string) bool {
+	_, ok := m.get(key)
+	return ok
+}
+
+func (m *Metadata) get(key string) (interface{}, bool) {
 	val, ok := m.meta[key]
 	return val, ok
 }
@@ -100,7 +110,7 @@ func (m *Metadata) Get(key string) (interface{}, bool) {
 // GetString parses the metadata value for key and returns it as a string.
 // If the underlying value is not a valid string, an empty string is returned.
 func (m *Metadata) GetString(key string) string {
-	val, ok := m.Get(key)
+	val, ok := m.get(key)
 	if !ok {
 		return ""
 	}
@@ -113,7 +123,7 @@ func (m *Metadata) GetString(key string) string {
 // If the underlying value is a string GetBool attempts to parse it using
 // strconv.ParseBool.
 func (m *Metadata) GetBool(key string) bool {
-	val, ok := m.Get(key)
+	val, ok := m.get(key)
 	if !ok {
 		return false
 	}
@@ -134,7 +144,7 @@ var fmts = []string{time.RFC3339, time.RFC3339Nano, "2006-01-02T15:04:05", "2006
 // If the underlying value is not already a time.Time, or a string that can be
 // parsed into a valid time, a nil value is returned.
 func (m *Metadata) GetTime(key string) *time.Time {
-	val, ok := m.Get(key)
+	val, ok := m.get(key)
 	if !ok {
 		return nil
 	}
