@@ -55,7 +55,7 @@ Expects an API token to be exported as $%s.`, envToken),
 				}
 			}
 
-			return blog.WalkPages("content/", func(path string, info os.FileInfo, err error) error {
+			return blog.WalkPages(content, func(path string, info os.FileInfo, err error) error {
 				debug.Printf("opening %s", path)
 				fd, err := os.Open(path)
 				if err != nil {
