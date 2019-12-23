@@ -99,6 +99,7 @@ To get a token, use the "token" command.`, os.Args[0], envToken),
 		Flags: flags,
 		Commands: []*cli.Command{
 			collectionsCmd(client, logger, debug),
+			convertCmd(logger, debug),
 			publishCmd(siteConfig, client, logger, debug),
 			tokenCmd(apiBase, torPort, logger, debug),
 		},
