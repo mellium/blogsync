@@ -87,7 +87,6 @@ Expects an API token to be exported as $%s.`, envToken),
 					logger.Printf("invalid or empty title in %s, skipping", path)
 					return nil
 				}
-				created := meta.GetTime("date")
 
 				if col := meta.GetString("collection"); col != "" {
 					collection = col
@@ -117,8 +116,16 @@ Expects an API token to be exported as $%s.`, envToken),
 					logger.Printf("post %s has no body, skipping", path)
 					return nil
 				}
+
+				created := timeOrDef(meta.GetTime("publishDate"), meta.GetTime("date"))
+				createdPtr := &created
+				if created.IsZero() {
+					createdPtr = nil
+				}
+				updated := timeOrDef(meta.GetTime("lastmod"), created)
 				_, err = client.CreatePost(&writeas.PostParams{
-					Created:    created,
+					Created:    createdPtr,
+					Updated:    &updated,
 					Title:      title,
 					Content:    bodyBuf.String(),
 					Collection: collection,

@@ -126,23 +126,24 @@ var fmts = []string{time.RFC3339, time.RFC3339Nano, "2006-01-02T15:04:05", "2006
 
 // GetTime parses the metadata value for key and returns it as a timestamp.
 // If the underlying value is not already a time.Time, or a string that can be
-// parsed into a valid time, a nil value is returned.
-func (m Metadata) GetTime(key string) *time.Time {
+// parsed into a valid time, a zero value will be returned.
+func (m Metadata) GetTime(key string) time.Time {
+	var zero time.Time
 	val, ok := m.get(key)
 	if !ok {
-		return nil
+		return zero
 	}
 
 	switch t := val.(type) {
 	case time.Time:
-		return &t
+		return t
 	case string:
 		for _, timeFmt := range fmts {
 			out, err := time.Parse(timeFmt, t)
 			if err == nil {
-				return &out
+				return out
 			}
 		}
 	}
-	return nil
+	return zero
 }

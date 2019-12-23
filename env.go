@@ -7,7 +7,15 @@ package main
 import (
 	"os"
 	"strconv"
+	"time"
 )
+
+func timeOrDef(val, def time.Time) time.Time {
+	if val.IsZero() {
+		return def
+	}
+	return val
+}
 
 func orDef(val, def string) string {
 	if val == "" {
