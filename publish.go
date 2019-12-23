@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/writeas/go-writeas/v2"
 	"mellium.im/blogsync/internal/blog"
@@ -56,6 +57,17 @@ Expects an API token to be exported as $%s.`, envToken),
 					return fmt.Errorf("error compiling template: %v", err)
 				}
 			}
+
+			var posts []writeas.Post
+			p, err := client.GetUserPosts()
+			if err != nil {
+				return fmt.Errorf("error fetching users posts: %v", err)
+			}
+			// For now, the writeas SDK returns things with a lot of unnecessary
+			// indirection that makes the library hard to use.
+			// Go ahead and unwrap this and we can remove this workaround if they ever
+			// fix it.
+			posts = *p
 
 			return blog.WalkPages(content, func(path string, info os.FileInfo, err error) error {
 				debug.Printf("opening %s", path)
@@ -119,8 +131,18 @@ Expects an API token to be exported as $%s.`, envToken),
 					return nil
 				}
 
-				if dryRun {
-					return nil
+				slug := blog.Slug(path, meta)
+				var existingPost *writeas.Post
+				for _, post := range posts {
+					var postCollection string
+					if post.Collection != nil {
+						postCollection = post.Collection.Alias
+					}
+
+					if slug == post.Slug && collection == postCollection {
+						existingPost = &post
+						break
+					}
 				}
 
 				created := timeOrDef(meta.GetTime("publishDate"), meta.GetTime("date"))
@@ -130,27 +152,88 @@ Expects an API token to be exported as $%s.`, envToken),
 				}
 				rtl := meta.GetBool("rtl")
 				lang := meta.GetString("lang")
-				langPtr := &lang
-				if lang == "" {
-					langPtr = nil
-				}
 				updated := timeOrDef(meta.GetTime("lastmod"), created)
-				_, err = client.CreatePost(&writeas.PostParams{
+
+				var postID, postTok string
+				if existingPost != nil {
+					postID = existingPost.ID
+					postTok = existingPost.Token
+				}
+				params := &writeas.PostParams{
+					ID:    postID,
+					Token: postTok,
+
+					Content:  bodyBuf.String(),
+					Created:  createdPtr,
+					Font:     orDef(meta.GetString("font"), "norm"),
+					IsRTL:    &rtl,
+					Language: &lang,
+					Slug:     slug,
+					Title:    title,
+					Updated:  &updated,
+
 					Collection: collection,
-					Content:    bodyBuf.String(),
-					Created:    createdPtr,
-					Font:       meta.GetString("font"),
-					IsRTL:      &rtl,
-					Language:   langPtr,
-					Slug:       meta.GetString("slug"),
-					Title:      title,
-					Updated:    &updated,
-				})
-				if err != nil {
-					logger.Printf("error creating post from %s: %v", path, err)
+				}
+
+				if existingPost == nil {
+					debug.Printf("publishing %s from %s", slug, path)
+				} else {
+					var created, updated time.Time
+					if params.Updated != nil {
+						updated = *params.Updated
+					}
+					if params.Created != nil {
+						created = *params.Created
+					}
+					cmpPost := writeas.Post{
+						ID:       params.ID,
+						Slug:     params.Slug,
+						Token:    params.Token,
+						Font:     params.Font,
+						Language: params.Language,
+						RTL:      params.IsRTL,
+						Created:  created,
+						Updated:  updated,
+						Title:    params.Title,
+						Content:  params.Content,
+						Views:    existingPost.Views,
+						// TODO: what is this?
+						Listed: existingPost.Listed,
+						// TODO: implement tags
+						Tags:      existingPost.Tags,
+						Images:    existingPost.Images,
+						OwnerName: existingPost.OwnerName,
+						// TODO: implement collection changing if ID is set on the post
+						Collection: existingPost.Collection,
+					}
+					if eqPost(&cmpPost, existingPost) {
+						debug.Printf("no updates needed for %s, skipping", slug)
+					} else {
+						debug.Printf("updating /%s (%q) from %s", slug, postID, path)
+					}
+				}
+
+				if dryRun {
 					return nil
 				}
 
+				if postID == "" {
+					_, err = client.CreatePost(params)
+					if err != nil {
+						logger.Printf("error creating post from %s: %v", path, err)
+						return nil
+					}
+					return nil
+				}
+
+				// Write.as returns a generic 500 error if you set Created, even if it's
+				// unchanged.
+				params.Created = nil
+				_, err = client.UpdatePost(postID, postTok, params)
+				if err != nil {
+					logger.Printf("error updating post %q from %s: %v", postID, path, err)
+					return nil
+				}
 				return nil
 			})
 		},
