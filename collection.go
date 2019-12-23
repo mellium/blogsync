@@ -22,7 +22,7 @@ func collectionsCmd(client *writeas.Client, logger, debug *log.Logger) *cli.Comm
 				return err
 			}
 
-			for _, coll := range colls {
+			for _, coll := range *colls {
 				fmt.Printf("%+v\n", coll)
 			}
 			return nil
