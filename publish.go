@@ -128,19 +128,23 @@ Expects an API token to be exported as $%s.`, envToken),
 				if created.IsZero() {
 					createdPtr = nil
 				}
+				rtl := meta.GetBool("rtl")
+				lang := meta.GetString("lang")
+				langPtr := &lang
+				if lang == "" {
+					langPtr = nil
+				}
 				updated := timeOrDef(meta.GetTime("lastmod"), created)
 				_, err = client.CreatePost(&writeas.PostParams{
-					Created:    createdPtr,
-					Updated:    &updated,
-					Title:      title,
-					Content:    bodyBuf.String(),
 					Collection: collection,
-
-					// TODO: Font string, get from metadata or config
-					// TODO: Language *string, get from metadata or config
-					// TODO: IsRTL bool, get from metadata or config
-					// TODO: Updated *time.Time = get from metadata or config
-					// TODO: Slug: get from metadata or configurable template
+					Content:    bodyBuf.String(),
+					Created:    createdPtr,
+					Font:       meta.GetString("font"),
+					IsRTL:      &rtl,
+					Language:   langPtr,
+					Slug:       meta.GetString("slug"),
+					Title:      title,
+					Updated:    &updated,
 				})
 				if err != nil {
 					logger.Printf("error creating post from %s: %v", path, err)
