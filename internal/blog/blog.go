@@ -44,21 +44,17 @@ func WalkPages(root string, walkFn filepath.WalkFunc) error {
 
 // Metadata contains parsed metadata including the type of the metadata in the
 // file, and the offset of where the metadata ends.
-type Metadata struct {
-	header string
-	meta   map[string]interface{}
-}
+type Metadata map[string]interface{}
 
 // Decode extracts metadata from the provided page.
 // It assumes the first byte is the metadata header.
 //
 // It supports decoding TOML wrapped in "+++\n" and YAML wrapped in "---\n"
 // similar to Hugo or Jekyll.
-func (m *Metadata) Decode(f io.Reader) error {
+func (m Metadata) Decode(f io.Reader) error {
 	r := bufio.NewReader(f)
 
-	var err error
-	m.header, err = r.ReadString('\n')
+	header, err := r.ReadString('\n')
 	if err != nil {
 		return err
 	}
@@ -68,7 +64,7 @@ func (m *Metadata) Decode(f io.Reader) error {
 	if err != nil && err != io.EOF {
 		return err
 	}
-	for line != m.header {
+	for line != header {
 		_, err := metaBuf.WriteString(line)
 		if err != nil {
 			return err
@@ -80,36 +76,24 @@ func (m *Metadata) Decode(f io.Reader) error {
 		}
 	}
 
-	m.meta = make(map[string]interface{})
-	switch m.header {
+	switch header {
 	case HeaderTOML:
-		err = toml.Unmarshal(metaBuf.Bytes(), &m.meta)
+		err = toml.Unmarshal(metaBuf.Bytes(), &m)
 	case HeaderYAML:
-		err = yaml.Unmarshal(metaBuf.Bytes(), m.meta)
+		err = yaml.Unmarshal(metaBuf.Bytes(), m)
 	}
 	return err
 }
 
-// Get returns the value parsed for the given key, or a nil value.
-func (m *Metadata) Get(key string) interface{} {
-	val, _ := m.get(key)
-	return val
-}
-
 // Has returns whether or not the key actually exists in the metadata.
-func (m *Metadata) Has(key string) bool {
-	_, ok := m.get(key)
-	return ok
-}
-
-func (m *Metadata) get(key string) (interface{}, bool) {
-	val, ok := m.meta[key]
+func (m Metadata) get(key string) (interface{}, bool) {
+	val, ok := m[key]
 	return val, ok
 }
 
 // GetString parses the metadata value for key and returns it as a string.
 // If the underlying value is not a valid string, an empty string is returned.
-func (m *Metadata) GetString(key string) string {
+func (m Metadata) GetString(key string) string {
 	val, ok := m.get(key)
 	if !ok {
 		return ""
@@ -122,7 +106,7 @@ func (m *Metadata) GetString(key string) string {
 // GetBool parses the metadata value for key and returns it as a bool.
 // If the underlying value is a string GetBool attempts to parse it using
 // strconv.ParseBool.
-func (m *Metadata) GetBool(key string) bool {
+func (m Metadata) GetBool(key string) bool {
 	val, ok := m.get(key)
 	if !ok {
 		return false
@@ -143,7 +127,7 @@ var fmts = []string{time.RFC3339, time.RFC3339Nano, "2006-01-02T15:04:05", "2006
 // GetTime parses the metadata value for key and returns it as a timestamp.
 // If the underlying value is not already a time.Time, or a string that can be
 // parsed into a valid time, a nil value is returned.
-func (m *Metadata) GetTime(key string) *time.Time {
+func (m Metadata) GetTime(key string) *time.Time {
 	val, ok := m.get(key)
 	if !ok {
 		return nil

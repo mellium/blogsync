@@ -69,7 +69,7 @@ Expects an API token to be exported as $%s.`, envToken),
 				}()
 
 				f := bufio.NewReader(fd)
-				meta := &blog.Metadata{}
+				meta := make(blog.Metadata)
 				err = meta.Decode(f)
 				if err != nil {
 					logger.Printf("error decoding metadata for %s, skipping: %v", path, err)
@@ -103,7 +103,7 @@ Expects an API token to be exported as $%s.`, envToken),
 				var bodyBuf strings.Builder
 				err = compiledTmpl.Execute(&bodyBuf, struct {
 					Body string
-					Meta *blog.Metadata
+					Meta blog.Metadata
 				}{
 					Body: string(body),
 					Meta: meta,
