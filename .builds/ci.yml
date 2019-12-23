@@ -1,0 +1,16 @@
+image: freebsd/latest
+packages:
+  - go
+tasks:
+  - info: |
+      go version
+      go env
+  - test: |
+      cd blogsync/
+      go test -v ./...
+      gofmt -s -l . && [ -z "$(gofmt -s -l .)" ]
+  - lint: |
+      cd blogsync/
+      go vet ./...
+      # This will modify go.mod, so do it last.
+      go run golang.org/x/lint/golint -set_exit_status ./...
