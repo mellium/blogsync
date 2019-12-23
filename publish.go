@@ -84,9 +84,16 @@ Expects an API token to be exported as $%s.`, envToken),
 
 				f := bufio.NewReader(fd)
 				meta := make(blog.Metadata)
-				_, err = meta.Decode(f)
+				header, err := meta.Decode(f)
 				if err != nil {
 					logger.Printf("error decoding metadata for %s, skipping: %v", path, err)
+					return nil
+				}
+				// This may seem unnecessary, but I don't plan on supporting YAML
+				// headers forever to keep things simple, so go ahead and forbid
+				// publishing with them to encourage people to convert their blogs over.
+				if header == blog.HeaderYAML {
+					logger.Printf(`file %s has a YAML header, try converting it by running "%s convert", skipping`, path, os.Args[0])
 					return nil
 				}
 
