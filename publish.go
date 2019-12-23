@@ -22,11 +22,13 @@ import (
 
 func publishCmd(siteConfig Config, client *writeas.Client, logger, debug *log.Logger) *cli.Command {
 	var (
-		collection string
+		collection = ""
+		dryRun     = false
 		content    = "content/"
 		tmpl       = "{{.Body}}"
 	)
 	flags := flag.NewFlagSet("publish", flag.ContinueOnError)
+	flags.BoolVar(&dryRun, "dry-run", dryRun, "Perform a trial run with no changes made")
 	flags.StringVar(&collection, "collection", siteConfig.Collection, "The default collection for posts that don't include `collection' in their frontmatter")
 	flags.StringVar(&content, "content", content, "A directory containing pages and posts")
 	flags.StringVar(&tmpl, "tmpl", orDef(siteConfig.Tmpl, tmpl), "A template using Go's html/template format, to load from a file use @filename")
@@ -114,6 +116,10 @@ Expects an API token to be exported as $%s.`, envToken),
 				if bodyBuf.Len() == 0 {
 					// Apparently write.as doesn't like posts that don't have a body.
 					logger.Printf("post %s has no body, skipping", path)
+					return nil
+				}
+
+				if dryRun {
 					return nil
 				}
 
