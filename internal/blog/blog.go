@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -146,4 +147,42 @@ func (m Metadata) GetTime(key string) time.Time {
 		}
 	}
 	return zero
+}
+
+// Slug attempts to guess the slug that the final page will have by checking if
+// the metadata has a "slug" attribute and, if not, generating one from the
+// filename (the full path should be passed so that trees such as
+// "mypost/index.md" can be recognized as a post called 'mypost' and not
+// 'index').
+func Slug(filename string, meta Metadata) string {
+	// First see if the user has explicitly set a slug.
+	slug := meta.GetString("slug")
+
+	// If not, use the post title.
+	if slug == "" {
+		slug = meta.GetString("title")
+	}
+
+	// If there is no post title, things will probably fail, but just in case try
+	// to guess the slug from the filename or path.
+	if slug == "" {
+		// If the slug is not set in the metadata, extract it form the filename or
+		// the last segment of the path.
+		base := filepath.Base(filename)
+		if base == "index.md" {
+			slug = filepath.Base(filepath.Dir(filename))
+		}
+		if slug == "" {
+			slug = strings.TrimSuffix(base, filepath.Ext(base))
+		}
+	}
+
+	// Try to make sure the slug is actually valid as a slug, even if it comes
+	// from a title or path that won't necessarily be.
+	const sep = "-"
+	slug = strings.ToLower(slug)
+	slug = strings.ReplaceAll(slug, " ", sep)
+	slug = strings.ReplaceAll(slug, string(filepath.Separator), sep)
+
+	return slug
 }
