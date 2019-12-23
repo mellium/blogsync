@@ -1,0 +1,12 @@
+name: PR Closer
+on: [pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Auto Close
+      uses: superbrothers/auto-close-action@9127c1db2d59dc64fd0bcc4c2fc2e71556f6aa84
+      env:
+        COMMENT: This repo is a mirror and does not accept PRs. See `README.md` and `CONTRIBUTING.md` for more information. Thanks for submitting a patch!
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
