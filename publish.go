@@ -84,7 +84,7 @@ Expects an API token to be exported as $%s.`, envToken),
 
 				f := bufio.NewReader(fd)
 				meta := make(blog.Metadata)
-				err = meta.Decode(f)
+				_, err = meta.Decode(f)
 				if err != nil {
 					logger.Printf("error decoding metadata for %s, skipping: %v", path, err)
 					return nil

@@ -51,29 +51,29 @@ type Metadata map[string]interface{}
 // It assumes the first byte is the metadata header.
 //
 // It supports decoding TOML wrapped in "+++\n" and YAML wrapped in "---\n"
-// similar to Hugo or Jekyll.
-func (m Metadata) Decode(f io.Reader) error {
+// similar to Hugo or Jekyll and returns the header that it finds.
+func (m Metadata) Decode(f io.Reader) (string, error) {
 	r := bufio.NewReader(f)
 
 	header, err := r.ReadString('\n')
 	if err != nil {
-		return err
+		return header, err
 	}
 
 	metaBuf := new(bytes.Buffer)
 	line, err := r.ReadString('\n')
 	if err != nil && err != io.EOF {
-		return err
+		return header, err
 	}
 	for line != header {
 		_, err := metaBuf.WriteString(line)
 		if err != nil {
-			return err
+			return header, err
 		}
 
 		line, err = r.ReadString('\n')
 		if err != nil && err != io.EOF {
-			return err
+			return header, err
 		}
 	}
 
@@ -83,7 +83,7 @@ func (m Metadata) Decode(f io.Reader) error {
 	case HeaderYAML:
 		err = yaml.Unmarshal(metaBuf.Bytes(), m)
 	}
-	return err
+	return header, err
 }
 
 // Has returns whether or not the key actually exists in the metadata.
