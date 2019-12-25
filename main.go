@@ -20,6 +20,7 @@ import (
 const (
 	envAPIBase = "WA_URL"
 	envToken   = "WA_TOKEN"
+	envUser    = "WA_USER"
 	envTorPort = "TOR_SOCKS_PORT"
 
 	userConfig = "~/.writeas/user.json"
@@ -86,9 +87,10 @@ func main() {
 		logger.Fatalf("error loading %s: %v", cfgFile, err)
 	}
 
+	_, tok := loadUser(debug)
 	client := writeas.NewClientWith(writeas.Config{
 		URL:     apiBase,
-		Token:   getToken(debug),
+		Token:   tok,
 		TorPort: torPort,
 	})
 

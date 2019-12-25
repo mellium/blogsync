@@ -11,16 +11,14 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/writeas/go-writeas/v2"
+	"golang.org/x/crypto/ssh/terminal"
 	"mellium.im/cli"
 )
 
-// getToken returns an access token by reading ~/.writeas/user.json, or by
-// checking the WA_TOKEN environment variable (in that order).
-func getToken(debug *log.Logger) string {
-	tokenEnv := os.Getenv(envToken)
-
+func cfgFile(debug *log.Logger) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		debug.Printf("error fetching home directory: %v", err)
@@ -28,40 +26,52 @@ func getToken(debug *log.Logger) string {
 	if home == "" {
 		home = os.Getenv("HOME")
 	}
-	f, err := os.Open(filepath.Join(home, ".writeas/user.json"))
+	return filepath.Join(home, ".writeas/user.json")
+}
+
+// loadUser returns a username and  access token by reading
+// ~/.writeas/user.json, or by checking the WA_TOKEN and WA_USER environment
+// variables (in that order).
+func loadUser(debug *log.Logger) (username, token string) {
+	tokenEnv := os.Getenv(envToken)
+	userEnv := os.Getenv(envUser)
+
+	f, err := os.Open(cfgFile(debug))
 	if err != nil {
 		debug.Printf("error opening %s, trying $%s instead: %v", userConfig, envToken, err)
-		return tokenEnv
+		return userEnv, tokenEnv
 	}
 	d := json.NewDecoder(f)
 	var user = struct {
 		Token string `json:"access_token"`
+		User  struct {
+			Username string `json:"username"`
+		} `json:"user"`
 	}{}
 	err = d.Decode(&user)
 	if err != nil {
 		debug.Printf("error decoding %s, trying $%s instead: %v", userConfig, envToken, err)
-		return tokenEnv
+		return userEnv, tokenEnv
 	}
 
 	if user.Token == "" {
 		debug.Printf("no token found in %s, trying $%s instead", userConfig, envToken)
-		return tokenEnv
+		return userEnv, tokenEnv
 	}
 
-	return user.Token
+	return user.User.Username, user.Token
 }
 
 func tokenCmd(apiBase string, torPort int, logger, debug *log.Logger) *cli.Command {
 	const (
-		envUser = "WA_USER"
 		envPass = "WA_PASS"
 	)
-	var (
-		username = os.Getenv(envUser)
-		revoke   = false
-	)
+
+	username, _ := loadUser(debug)
+	revoke := false
+
 	flags := flag.NewFlagSet("token", flag.ContinueOnError)
-	flags.StringVar(&username, "user", username, "The username to login as, overrides $"+envUser)
+	flags.StringVar(&username, "user", username, "The username to login as, overrides $"+envUser+" and the config file")
 	flags.BoolVar(&revoke, "revoke", revoke, "Revoke any listed tokens instead of generating a new one")
 
 	return &cli.Command{
@@ -69,8 +79,8 @@ func tokenCmd(apiBase string, torPort int, logger, debug *log.Logger) *cli.Comma
 		Flags: flags,
 		Description: `Generate or revoke an access token.
 
-Requires that $WA_PASS be set to the users password. This option is not provided
-as a flag so that the password does not end up in the users shell history.`,
+Reads the users password from $WA_PASS, or prompts for a password if the
+environment variable is not set.`,
 		Run: func(cmd *cli.Command, args ...string) error {
 			if revoke {
 				var err error
@@ -89,12 +99,23 @@ as a flag so that the password does not end up in the users shell history.`,
 				return err
 			}
 
+			if len(flags.Args()) > 0 {
+				cmd.Help()
+				return fmt.Errorf("wrong number of arguments")
+			}
+
 			pass := os.Getenv(envPass)
 			switch {
 			case len(pass) == 0:
-				return fmt.Errorf("$" + envPass + " must be set to generate tokens")
+				fmt.Printf("Enter password for write.as user %s: ", username)
+				passBytes, err := terminal.ReadPassword(syscall.Stdin)
+				if err != nil {
+					return fmt.Errorf("error prompting for password, set $%s or fix TTY: %v", envPass, err)
+				}
+				fmt.Println()
+				pass = string(passBytes)
 			case len(username) == 0:
-				return fmt.Errorf("$" + envUser + " or --user must be specified to generate tokens")
+				return fmt.Errorf("A writeas-cli config file must be present or $" + envUser + " or --user must be specified to generate tokens")
 			}
 
 			c := writeas.NewClient()
