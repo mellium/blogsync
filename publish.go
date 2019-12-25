@@ -68,6 +68,7 @@ Expects an API token to be exported as $%s.`, envToken),
 			// indirection that makes the library hard to use.
 			// Go ahead and unwrap this and we can remove this workaround if they ever
 			// fix it.
+			// See: https://github.com/writeas/go-writeas/pull/19
 			posts = *p
 
 			return blog.WalkPages(content, func(path string, info os.FileInfo, err error) error {
