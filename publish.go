@@ -23,16 +23,18 @@ import (
 func publishCmd(siteConfig Config, client *writeas.Client, logger, debug *log.Logger) *cli.Command {
 	var (
 		collection = ""
+		del        = false
 		dryRun     = false
 		force      = false
 		content    = "content/"
 		tmpl       = "{{.Body}}"
 	)
 	flags := flag.NewFlagSet("publish", flag.ContinueOnError)
+	flags.BoolVar(&del, "delete", del, "Delete pages for which matching files cannot be found")
 	flags.BoolVar(&dryRun, "dry-run", dryRun, "Perform a trial run with no changes made")
 	flags.BoolVar(&force, "f", force, "Force publishing, even if no updates exist")
-	flags.StringVar(&collection, "collection", siteConfig.Collection, "The default collection for posts that don't include `collection' in their frontmatter")
-	flags.StringVar(&content, "content", content, "A directory containing pages and posts")
+	flags.StringVar(&collection, "collection", siteConfig.Collection, "The default collection for pages that don't include `collection' in their frontmatter")
+	flags.StringVar(&content, "content", content, "A directory containing pages")
 	flags.StringVar(&tmpl, "tmpl", orDef(siteConfig.Tmpl, tmpl), "A template using Go's html/template format, to load from a file use @filename")
 
 	return &cli.Command{
@@ -71,7 +73,7 @@ Expects an API token to be exported as $%s.`, envToken),
 			// See: https://github.com/writeas/go-writeas/pull/19
 			posts = *p
 
-			return blog.WalkPages(content, func(path string, info os.FileInfo, err error) error {
+			err = blog.WalkPages(content, func(path string, info os.FileInfo, err error) error {
 				debug.Printf("opening %s", path)
 				fd, err := os.Open(path)
 				if err != nil {
@@ -142,7 +144,7 @@ Expects an API token to be exported as $%s.`, envToken),
 
 				slug := blog.Slug(path, meta)
 				var existingPost *writeas.Post
-				for _, post := range posts {
+				for i, post := range posts {
 					var postCollection string
 					if post.Collection != nil {
 						postCollection = post.Collection.Alias
@@ -150,6 +152,7 @@ Expects an API token to be exported as $%s.`, envToken),
 
 					if slug == post.Slug && collection == postCollection {
 						existingPost = &post
+						posts = append(posts[:i], posts[i+1:]...)
 						break
 					}
 				}
@@ -217,6 +220,25 @@ Expects an API token to be exported as $%s.`, envToken),
 				}
 				return nil
 			})
+			if err != nil {
+				return err
+			}
+
+			// Delete remaining posts for which we couldn't find a matching file.
+			for _, post := range posts {
+				if del {
+					debug.Printf("no file found matching post %q, deleting", post.Slug)
+					if !dryRun {
+						err := client.DeletePost(post.ID, post.Token)
+						if err != nil {
+							logger.Printf("error deleting post %q: %v", post.Slug, err)
+						}
+					}
+					continue
+				}
+				logger.Printf("no file found matching post %q, re-run with --delete to remove", post.Slug)
+			}
+			return nil
 		},
 	}
 }
