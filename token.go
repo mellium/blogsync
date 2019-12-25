@@ -5,14 +5,51 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/writeas/go-writeas/v2"
 	"mellium.im/cli"
 )
+
+// getToken returns an access token by reading ~/.writeas/user.json, or by
+// checking the WA_TOKEN environment variable (in that order).
+func getToken(debug *log.Logger) string {
+	tokenEnv := os.Getenv(envToken)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		debug.Printf("error fetching home directory: %v", err)
+	}
+	if home == "" {
+		home = os.Getenv("HOME")
+	}
+	f, err := os.Open(filepath.Join(home, ".writeas/user.json"))
+	if err != nil {
+		debug.Printf("error opening %s, trying $%s instead: %v", userConfig, envToken, err)
+		return tokenEnv
+	}
+	d := json.NewDecoder(f)
+	var user = struct {
+		Token string `json:"access_token"`
+	}{}
+	err = d.Decode(&user)
+	if err != nil {
+		debug.Printf("error decoding %s, trying $%s instead: %v", userConfig, envToken, err)
+		return tokenEnv
+	}
+
+	if user.Token == "" {
+		debug.Printf("no token found in %s, trying $%s instead", userConfig, envToken)
+		return tokenEnv
+	}
+
+	return user.Token
+}
 
 func tokenCmd(apiBase string, torPort int, logger, debug *log.Logger) *cli.Command {
 	const (
