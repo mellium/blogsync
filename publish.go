@@ -14,7 +14,6 @@ import (
 	"os"
 	"strings"
 	"text/template"
-	"time"
 
 	"github.com/writeas/go-writeas/v2"
 	"mellium.im/blogsync/internal/blog"
@@ -185,39 +184,11 @@ Expects an API token to be exported as $%s.`, envToken),
 				if existingPost == nil {
 					debug.Printf("publishing %s from %s", slug, path)
 				} else {
-					var created, updated time.Time
-					if params.Updated != nil {
-						updated = *params.Updated
-					}
-					if params.Created != nil {
-						created = *params.Created
-					}
-					cmpPost := writeas.Post{
-						ID:       params.ID,
-						Slug:     params.Slug,
-						Token:    params.Token,
-						Font:     params.Font,
-						Language: params.Language,
-						RTL:      params.IsRTL,
-						Created:  created,
-						Updated:  updated,
-						Title:    params.Title,
-						Content:  params.Content,
-						Views:    existingPost.Views,
-						// TODO: what is this?
-						Listed: existingPost.Listed,
-						// TODO: implement tags
-						Tags:      existingPost.Tags,
-						Images:    existingPost.Images,
-						OwnerName: existingPost.OwnerName,
-						// TODO: implement collection changing if ID is set on the post
-						Collection: existingPost.Collection,
-					}
-					if eqPost(&cmpPost, existingPost) {
+					if eqParams(existingPost, params) {
 						debug.Printf("no updates needed for %s, skipping", slug)
-					} else {
-						debug.Printf("updating /%s (%q) from %s", slug, postID, path)
+						return nil
 					}
+					debug.Printf("updating /%s (%q) from %s", slug, postID, path)
 				}
 
 				if dryRun {

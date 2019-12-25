@@ -6,6 +6,7 @@ package main
 
 import (
 	"reflect"
+	"time"
 
 	"github.com/writeas/go-writeas/v2"
 )
@@ -38,4 +39,36 @@ func eqPost(p1, p2 *writeas.Post) bool {
 	}
 
 	return true
+}
+
+func eqParams(p *writeas.Post, params *writeas.PostParams) bool {
+	var created, updated time.Time
+	if params.Updated != nil {
+		updated = *params.Updated
+	}
+	if params.Created != nil {
+		created = *params.Created
+	}
+	cmpPost := writeas.Post{
+		ID:       params.ID,
+		Slug:     params.Slug,
+		Token:    params.Token,
+		Font:     params.Font,
+		Language: params.Language,
+		RTL:      params.IsRTL,
+		Created:  created,
+		Updated:  updated,
+		Title:    params.Title,
+		Content:  params.Content,
+		Views:    p.Views,
+		// TODO: what is this?
+		Listed: p.Listed,
+		// TODO: implement tags
+		Tags:      p.Tags,
+		Images:    p.Images,
+		OwnerName: p.OwnerName,
+		// TODO: implement collection changing if ID is set on the post
+		Collection: p.Collection,
+	}
+	return eqPost(&cmpPost, p)
 }
