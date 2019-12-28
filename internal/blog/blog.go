@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -105,22 +104,14 @@ func (m Metadata) GetString(key string) string {
 }
 
 // GetBool parses the metadata value for key and returns it as a bool.
-// If the underlying value is a string GetBool attempts to parse it using
-// strconv.ParseBool.
+// If the underlying value is not a valid bool, an empty string is returned.
 func (m Metadata) GetBool(key string) bool {
 	val, ok := m.get(key)
 	if !ok {
 		return false
 	}
-
-	switch v := val.(type) {
-	case bool:
-		return v
-	case string:
-		parsed, _ := strconv.ParseBool(v)
-		return parsed
-	}
-	return false
+	ret, _ := val.(bool)
+	return ret
 }
 
 var fmts = []string{time.RFC3339, time.RFC3339Nano, "2006-01-02T15:04:05", "2006-01-02"}
