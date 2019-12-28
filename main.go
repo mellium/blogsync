@@ -3,6 +3,10 @@
 // license that can be found in the LICENSE file.
 
 // The blogsync command exports posts in Markdown format to write.as.
+//
+// For more information, try running:
+//
+//     blogsync help
 package main
 
 import (
