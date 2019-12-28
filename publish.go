@@ -187,37 +187,68 @@ Expects an API token to be exported as $%s.`, envToken),
 					Collection: collection,
 				}
 
+				var skipUpdate bool
 				if existingPost == nil {
 					debug.Printf("publishing %s from %s", slug, path)
 				} else {
 					if eqParams(existingPost, params) && !force {
 						debug.Printf("no updates needed for %s, skipping", slug)
-						return nil
+						skipUpdate = true
+					} else {
+						debug.Printf("updating /%s (%q) from %s", slug, postID, path)
 					}
-					debug.Printf("updating /%s (%q) from %s", slug, postID, path)
 				}
 
-				if dryRun {
-					return nil
+				if !dryRun && !skipUpdate {
+					if postID == "" {
+						post, err := client.CreatePost(params)
+						if err != nil {
+							logger.Printf("error creating post from %s: %v", path, err)
+							return nil
+						}
+						postID = post.ID
+					} else {
+						// Write.as returns a generic 500 error if you set Created when
+						// updating a post, even if it's unchanged.
+						params.Created = nil
+						post, err := client.UpdatePost(postID, postTok, params)
+						if err != nil {
+							logger.Printf("error updating post %q from %s: %v", postID, path, err)
+							return nil
+						}
+						postID = post.ID
+					}
 				}
 
-				if postID == "" {
-					_, err = client.CreatePost(params)
+				// Right now there is no way to check if a post is pinned, so we have to
+				// assume that all posts may be pinned and always attempt to unpin them
+				// then re-pin any that should actually be pinned every time.
+				// This is not ideal.
+				debug.Printf("attempting to unpin post %s…", slug)
+				if !dryRun {
+					err = client.UnpinPost(collection, &writeas.PinnedPostParams{
+						ID: postID,
+					})
 					if err != nil {
-						logger.Printf("error creating post from %s: %v", path, err)
-						return nil
+						debug.Println("error unpinning post %s: %v", err)
 					}
-					return nil
 				}
 
-				// Write.as returns a generic 500 error if you set Created, even if it's
-				// unchanged.
-				params.Created = nil
-				_, err = client.UpdatePost(postID, postTok, params)
-				if err != nil {
-					logger.Printf("error updating post %q from %s: %v", postID, path, err)
-					return nil
+				pin, pinExists := meta["pin"]
+				ipin, pinInt := pin.(int64)
+				if pinExists && pinInt {
+					debug.Printf("attempting to pin post %s to position %d…", slug, int(ipin))
+					if !dryRun {
+						err = client.PinPost(collection, &writeas.PinnedPostParams{
+							ID:       postID,
+							Position: int(ipin),
+						})
+						if err != nil {
+							debug.Printf("error pinning post %s to position %d: %v", slug, int(ipin), err)
+						}
+					}
 				}
+
 				return nil
 			})
 			if err != nil {
