@@ -109,10 +109,14 @@ Most commands expect to find a Write.as API token in the writeas-cli config file
 To get a token, use the "token" command.`, os.Args[0], userConfig, envToken),
 		Flags: flags,
 		Commands: []*cli.Command{
+			// Sub-commands
 			collectionsCmd(client, logger, debug),
 			convertCmd(logger, debug),
 			publishCmd(siteConfig, client, logger, debug),
 			tokenCmd(apiBase, torPort, logger, debug),
+
+			// Help articles
+			tmplArticle(),
 		},
 	}
 
