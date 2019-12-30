@@ -20,6 +20,14 @@ import (
 	"mellium.im/cli"
 )
 
+const defTmpl = "{{.Body}}"
+
+type tmplData struct {
+	Body   string
+	Meta   blog.Metadata
+	Config Config
+}
+
 func publishCmd(siteConfig Config, client *writeas.Client, logger, debug *log.Logger) *cli.Command {
 	var (
 		collection = ""
@@ -27,7 +35,7 @@ func publishCmd(siteConfig Config, client *writeas.Client, logger, debug *log.Lo
 		dryRun     = false
 		force      = false
 		content    = "content/"
-		tmpl       = "{{.Body}}"
+		tmpl       = defTmpl
 	)
 	flags := flag.NewFlagSet("publish", flag.ContinueOnError)
 	flags.BoolVar(&del, "delete", del, "Delete pages for which matching files cannot be found")
@@ -125,12 +133,10 @@ Expects an API token to be exported as $%s.`, envToken),
 				body = bytes.TrimSpace(body)
 
 				var bodyBuf strings.Builder
-				err = compiledTmpl.Execute(&bodyBuf, struct {
-					Body string
-					Meta blog.Metadata
-				}{
-					Body: string(body),
-					Meta: meta,
+				err = compiledTmpl.Execute(&bodyBuf, tmplData{
+					Body:   string(body),
+					Meta:   meta,
+					Config: siteConfig,
 				})
 				if err != nil {
 					logger.Printf("error executing template for file %s: %v", path, err)
