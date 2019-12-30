@@ -32,11 +32,12 @@ const (
 
 // Config holds site configuration.
 type Config struct {
-	BaseURL      string `toml:"BaseURL"`
-	Collection   string `toml:"Collection"`
-	LanguageCode string `toml:"LanguageCode"`
-	Title        string `toml:"Title"`
-	Tmpl         string `toml:"Tmpl"`
+	BaseURL     string `toml:"BaseURL"`
+	Collection  string `toml:"Collection"`
+	Language    string `toml:"Language"`
+	Title       string `toml:"Title"`
+	Tmpl        string `toml:"Tmpl"`
+	Description string `toml:"Description"`
 
 	Author []struct {
 		Name  string `toml:"Name"`
