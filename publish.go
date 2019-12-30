@@ -170,6 +170,9 @@ Expects an API token to be exported as $%s.`, envToken),
 				}
 				rtl := meta.GetBool("rtl")
 				lang := meta.GetString("lang")
+				if lang == "" {
+					lang = siteConfig.Language
+				}
 				updated := timeOrDef(meta.GetTime("lastmod"), created)
 
 				var postID, postTok string
