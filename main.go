@@ -43,6 +43,8 @@ type Config struct {
 		Email string `toml:"email"`
 		URI   string `toml:"uri"`
 	} `toml:"author"`
+
+	Params map[string]interface{} `toml:"params"`
 }
 
 func main() {
