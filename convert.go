@@ -29,7 +29,8 @@ func convertCmd(logger, debug *log.Logger) *cli.Command {
 	flags.StringVar(&content, "content", content, "A directory containing pages and posts")
 
 	return &cli.Command{
-		Usage: "convert [-content=tree/]",
+		Usage: "convert [options]",
+		Flags: flags,
 		Description: `Converts post metadata to the required format.
 
 Convert searches the content directory for posts and performs the following
@@ -106,7 +107,7 @@ backup or commit all files to source control before converting them.`,
 				// If there are no changes to make, don't bother rewriting the file
 				// which could cause a diff because we can't guarantee the order of
 				// metadata in the frontmatter.
-				if !madeChanges {
+				if !madeChanges || dryRun {
 					return nil
 				}
 
