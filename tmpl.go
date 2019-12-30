@@ -60,7 +60,7 @@ The body field contains the markdown from the page being published, that is,
 everything after the frontmatter.  The Meta table contains the fields from the
 TOML frontmatter.  The Config field contains values loaded from the site config
 file.  If you want to add arbitrary values to the config file they must be in
-the params section.
+the Params section.
 
 If no template is specified when publishing, the body is published as-is using
 the template:

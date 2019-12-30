@@ -32,19 +32,19 @@ const (
 
 // Config holds site configuration.
 type Config struct {
-	BaseURL      string `toml:"baseURL"`
-	Collection   string `toml:"collection"`
-	LanguageCode string `toml:"languageCode"`
-	Title        string `toml:"title"`
-	Tmpl         string `toml:"tmpl"`
+	BaseURL      string `toml:"BaseURL"`
+	Collection   string `toml:"Collection"`
+	LanguageCode string `toml:"LanguageCode"`
+	Title        string `toml:"Title"`
+	Tmpl         string `toml:"Tmpl"`
 
 	Author []struct {
-		Name  string `toml:"name"`
-		Email string `toml:"email"`
-		URI   string `toml:"uri"`
-	} `toml:"author"`
+		Name  string `toml:"Name"`
+		Email string `toml:"Email"`
+		URI   string `toml:"URI"`
+	} `toml:"Author"`
 
-	Params map[string]interface{} `toml:"params"`
+	Params map[string]interface{} `toml:"Params"`
 }
 
 func main() {
