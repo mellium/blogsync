@@ -121,6 +121,9 @@ Expects an API token to be exported as $%s.`, envToken),
 					return nil
 				}
 
+				// Deliberately shadow collection so that we don't end up mutating
+				// something outside the closure.
+				collection := collection
 				if col := meta.GetString("collection"); col != "" {
 					collection = col
 				}
