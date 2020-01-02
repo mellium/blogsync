@@ -34,10 +34,11 @@ const (
 type Config struct {
 	BaseURL     string `toml:"BaseURL"`
 	Collection  string `toml:"Collection"`
+	Content     string `toml:"Content"`
+	Description string `toml:"Description"`
 	Language    string `toml:"Language"`
 	Title       string `toml:"Title"`
 	Tmpl        string `toml:"Tmpl"`
-	Description string `toml:"Description"`
 
 	Author []struct {
 		Name  string `toml:"Name"`

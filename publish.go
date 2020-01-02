@@ -43,7 +43,7 @@ func publishCmd(siteConfig Config, client *writeas.Client, logger, debug *log.Lo
 	flags.BoolVar(&dryRun, "dry-run", dryRun, "Perform a trial run with no changes made")
 	flags.BoolVar(&force, "f", force, "Force publishing, even if no updates exist")
 	flags.StringVar(&collection, "collection", siteConfig.Collection, "The default collection for pages that don't include `collection' in their frontmatter")
-	flags.StringVar(&content, "content", content, "A directory containing pages")
+	flags.StringVar(&content, "content", orDef(siteConfig.Content, content), "A directory containing pages")
 	flags.StringVar(&tmpl, "tmpl", orDef(siteConfig.Tmpl, tmpl), "A template using Go's html/template format, to load from a file use @filename")
 
 	return &cli.Command{
