@@ -15,6 +15,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/russross/blackfriday/v2"
 	"github.com/writeas/go-writeas/v2"
 	"mellium.im/blogsync/internal/blog"
 	"mellium.im/cli"
@@ -134,6 +135,9 @@ Expects an API token to be exported as $%s.`, envToken),
 					return nil
 				}
 				body = bytes.TrimSpace(body)
+				body = blackfriday.Run(body, blackfriday.WithRenderer(&unwrapRenderer{
+					debug: debug,
+				}))
 
 				var bodyBuf strings.Builder
 				err = compiledTmpl.Execute(&bodyBuf, tmplData{
