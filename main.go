@@ -114,6 +114,7 @@ To get a token, use the "token" command.`, os.Args[0], userConfig, envToken),
 			// Sub-commands
 			collectionsCmd(client, logger, debug),
 			convertCmd(logger, debug),
+			previewCmd(siteConfig, logger, debug),
 			publishCmd(siteConfig, client, logger, debug),
 			tokenCmd(apiBase, torPort, logger, debug),
 
