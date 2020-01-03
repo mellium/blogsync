@@ -179,18 +179,7 @@ https://writefreely.org/
 			}
 			debug.Printf("logged in as: %+v", authUser)
 
-			// TODO: add a mechanism for forcing the creation of collections that
-			// don't exist during publishing, and then rely on that.
-			_, err = client.CreateCollection(&writeas.CollectionParams{
-				Alias:       siteConfig.Collection,
-				Title:       siteConfig.Title,
-				Description: siteConfig.Description,
-			})
-			if err != nil {
-				return err
-			}
-
-			err = publishCmd(siteConfig, client, logger, debug).Exec()
+			err = publishCmd(true, siteConfig, client, logger, debug).Exec()
 			if err != nil {
 				return err
 			}

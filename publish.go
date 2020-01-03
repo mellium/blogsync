@@ -29,7 +29,7 @@ type tmplData struct {
 	Config Config
 }
 
-func publishCmd(siteConfig Config, client *writeas.Client, logger, debug *log.Logger) *cli.Command {
+func publishCmd(createCollections bool, siteConfig Config, client *writeas.Client, logger, debug *log.Logger) *cli.Command {
 	var (
 		collection = ""
 		del        = false
@@ -46,6 +46,7 @@ func publishCmd(siteConfig Config, client *writeas.Client, logger, debug *log.Lo
 	flags.StringVar(&content, "content", orDef(siteConfig.Content, content), "A directory containing pages")
 	flags.StringVar(&tmpl, "tmpl", orDef(siteConfig.Tmpl, tmpl), "A template using Go's html/template format, to load from a file use @filename")
 
+	var collections []writeas.Collection
 	return &cli.Command{
 		Usage: "publish [options]",
 		Description: fmt.Sprintf(`Publishes Markdown files to write.as.
@@ -53,6 +54,20 @@ func publishCmd(siteConfig Config, client *writeas.Client, logger, debug *log.Lo
 Expects an API token to be exported as $%s.`, envToken),
 		Flags: flags,
 		Run: func(cmd *cli.Command, args ...string) error {
+			if createCollections {
+				colls, err := client.GetUserCollections()
+				if err != nil {
+					logger.Printf("error fetching existing collections: %v", err)
+				}
+				collections = *colls
+
+				collections = createCollectionIfNotExist(collections, client, debug, &writeas.CollectionParams{
+					Alias:       siteConfig.Collection,
+					Title:       siteConfig.Title,
+					Description: siteConfig.Description,
+				})
+			}
+
 			compiledTmpl := template.New("root")
 			var err error
 			if tmplFile := strings.TrimPrefix(tmpl, "@"); tmpl != tmplFile {
@@ -216,6 +231,12 @@ Expects an API token to be exported as $%s.`, envToken),
 				}
 
 				if !dryRun && !skipUpdate {
+					if createCollections {
+						collections = createCollectionIfNotExist(collections, client, debug, &writeas.CollectionParams{
+							Alias: params.Collection,
+							Title: params.Collection,
+						})
+					}
 					if postID == "" {
 						post, err := client.CreatePost(params)
 						if err != nil {
@@ -288,4 +309,21 @@ Expects an API token to be exported as $%s.`, envToken),
 			return nil
 		},
 	}
+}
+
+func createCollectionIfNotExist(colls []writeas.Collection, client *writeas.Client, debug *log.Logger, coll *writeas.CollectionParams) []writeas.Collection {
+	for _, c := range colls {
+		if c.Alias == coll.Alias {
+			return colls
+		}
+	}
+	debug.Printf("creating collection %s…", coll.Alias)
+	newColl, err := client.CreateCollection(coll)
+	if err != nil {
+		debug.Printf("error creating collection %s: %v", coll.Alias, err)
+	}
+	if coll != nil {
+		colls = append(colls, *newColl)
+	}
+	return colls
 }
