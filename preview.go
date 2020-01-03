@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"text/template"
 	"time"
 
@@ -160,7 +161,7 @@ https://writefreely.org/
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			err = tailWriteFreely(ctx, cfgFilePath, debug)
+			err = tailWriteFreely(ctx, sigs, cfgFilePath, debug)
 			if err != nil {
 				debug.Printf("error while executing writefreely: %v", err)
 			}
@@ -212,7 +213,7 @@ func runWriteFreely(cfgFile string, debug *log.Logger, args ...string) error {
 	return nil
 }
 
-func tailWriteFreely(ctx context.Context, cfgFile string, debug *log.Logger) error {
+func tailWriteFreely(ctx context.Context, sigs chan<- os.Signal, cfgFile string, debug *log.Logger) error {
 	cmd := exec.CommandContext(ctx, binName, "-c", cfgFile)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -220,6 +221,9 @@ func tailWriteFreely(ctx context.Context, cfgFile string, debug *log.Logger) err
 	cmd.Dir = filepath.Dir(cfgFile)
 
 	debug.Printf("running %s with %v…\n", cmd.Path, cmd.Args)
+
+	// Also exit if SIGCHLD is sent (writefreely died).
+	signal.Notify(sigs, syscall.SIGCHLD)
 	return cmd.Start()
 }
 
