@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"strings"
 	"text/template"
 
@@ -21,7 +22,10 @@ import (
 	"mellium.im/cli"
 )
 
-const defTmpl = "{{.Body}}"
+const (
+	defTmpl     = "{{.Body}}"
+	defTmplName = "root"
+)
 
 type tmplData struct {
 	Body   string
@@ -68,16 +72,20 @@ Expects an API token to be exported as $%s.`, envToken),
 				})
 			}
 
-			compiledTmpl := template.New("root")
+			compiledTmpl := template.New(defTmplName).Funcs(map[string]interface{}{
+				"join": path.Join,
+			})
+			tmplFile := strings.TrimPrefix(tmpl, "@")
 			var err error
-			if tmplFile := strings.TrimPrefix(tmpl, "@"); tmpl != tmplFile {
+			if tmpl != tmplFile {
 				// If the template argument starts with "@" it is a filename that we
 				// should load.
-				compiledTmpl, err = template.ParseFiles(tmplFile)
+				compiledTmpl, err = compiledTmpl.ParseFiles(tmplFile)
 				if err != nil {
 					return fmt.Errorf("error compiling template file %s: %v", tmplFile, err)
 				}
 			} else {
+				tmplFile = defTmplName
 				// Otherwise, it is a raw template and we should compile it.
 				compiledTmpl, err = compiledTmpl.Parse(tmpl)
 				if err != nil {
@@ -97,16 +105,16 @@ Expects an API token to be exported as $%s.`, envToken),
 			// See: https://github.com/writeas/go-writeas/pull/19
 			posts = *p
 
-			err = blog.WalkPages(content, func(path string, info os.FileInfo, err error) error {
-				debug.Printf("opening %s", path)
-				fd, err := os.Open(path)
+			err = blog.WalkPages(content, func(pagePath string, info os.FileInfo, err error) error {
+				debug.Printf("opening %s", pagePath)
+				fd, err := os.Open(pagePath)
 				if err != nil {
-					logger.Printf("error opening %s, skipping: %v", path, err)
+					logger.Printf("error opening %s, skipping: %v", pagePath, err)
 					return nil
 				}
 				defer func() {
 					if err := fd.Close(); err != nil {
-						debug.Printf("error closing %s: %v", path, err)
+						debug.Printf("error closing %s: %v", pagePath, err)
 					}
 				}()
 
@@ -114,26 +122,26 @@ Expects an API token to be exported as $%s.`, envToken),
 				meta := make(blog.Metadata)
 				header, err := meta.Decode(f)
 				if err != nil {
-					logger.Printf("error decoding metadata for %s, skipping: %v", path, err)
+					logger.Printf("error decoding metadata for %s, skipping: %v", pagePath, err)
 					return nil
 				}
 				// This may seem unnecessary, but I don't plan on supporting YAML
 				// headers forever to keep things simple, so go ahead and forbid
 				// publishing with them to encourage people to convert their blogs over.
 				if header == blog.HeaderYAML {
-					logger.Printf(`file %s has a YAML header, try converting it by running "%s convert", skipping`, path, os.Args[0])
+					logger.Printf(`file %s has a YAML header, try converting it by running "%s convert", skipping`, pagePath, os.Args[0])
 					return nil
 				}
 
 				draft := meta.GetBool("draft")
 				if draft {
-					debug.Printf("skipping draft %s", path)
+					debug.Printf("skipping draft %s", pagePath)
 					return nil
 				}
 
 				title := meta.GetString("title")
 				if title == "" {
-					logger.Printf("invalid or empty title in %s, skipping", path)
+					logger.Printf("invalid or empty title in %s, skipping", pagePath)
 					return nil
 				}
 
@@ -146,7 +154,7 @@ Expects an API token to be exported as $%s.`, envToken),
 
 				body, err := ioutil.ReadAll(f)
 				if err != nil {
-					logger.Printf("error reading body from %s, skipping: %v", path, err)
+					logger.Printf("error reading body from %s, skipping: %v", pagePath, err)
 					return nil
 				}
 				body = bytes.TrimSpace(body)
@@ -163,22 +171,22 @@ Expects an API token to be exported as $%s.`, envToken),
 					}))
 
 				var bodyBuf strings.Builder
-				err = compiledTmpl.Execute(&bodyBuf, tmplData{
+				err = compiledTmpl.ExecuteTemplate(&bodyBuf, tmplFile, tmplData{
 					Body:   string(body),
 					Meta:   meta,
 					Config: siteConfig,
 				})
 				if err != nil {
-					logger.Printf("error executing template for file %s: %v", path, err)
+					logger.Printf("error executing template for file %s: %v", pagePath, err)
 					return nil
 				}
 				if bodyBuf.Len() == 0 {
 					// Apparently write.as doesn't like posts that don't have a body.
-					logger.Printf("post %s has no body, skipping", path)
+					logger.Printf("post %s has no body, skipping", pagePath)
 					return nil
 				}
 
-				slug := blog.Slug(path, meta)
+				slug := blog.Slug(pagePath, meta)
 				var existingPost *writeas.Post
 				for i, post := range posts {
 					var postCollection string
@@ -228,13 +236,13 @@ Expects an API token to be exported as $%s.`, envToken),
 
 				var skipUpdate bool
 				if existingPost == nil {
-					debug.Printf("publishing %s from %s", slug, path)
+					debug.Printf("publishing %s from %s", slug, pagePath)
 				} else {
 					if eqParams(existingPost, params) && !force {
 						debug.Printf("no updates needed for %s, skipping", slug)
 						skipUpdate = true
 					} else {
-						debug.Printf("updating /%s (%q) from %s", slug, postID, path)
+						debug.Printf("updating /%s (%q) from %s", slug, postID, pagePath)
 					}
 				}
 
@@ -248,7 +256,7 @@ Expects an API token to be exported as $%s.`, envToken),
 					if postID == "" {
 						post, err := client.CreatePost(params)
 						if err != nil {
-							logger.Printf("error creating post from %s: %v", path, err)
+							logger.Printf("error creating post from %s: %v", pagePath, err)
 							return nil
 						}
 						postID = post.ID
@@ -258,7 +266,7 @@ Expects an API token to be exported as $%s.`, envToken),
 						params.Created = nil
 						post, err := client.UpdatePost(postID, postTok, params)
 						if err != nil {
-							logger.Printf("error updating post %q from %s: %v", postID, path, err)
+							logger.Printf("error updating post %q from %s: %v", postID, pagePath, err)
 							return nil
 						}
 						postID = post.ID
