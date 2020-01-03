@@ -154,7 +154,7 @@ func (*unwrapRenderer) renderText(w io.Writer, node *blackfriday.Node, entering 
 
 	_, err := w.Write(bytes.ReplaceAll(node.Literal, []byte{'\n'}, []byte{' '}))
 	if err != nil {
-		panic(fmt.Errorf("error writing markdown to buffer: %w"))
+		panic(fmt.Errorf("error writing markdown to buffer: %w", err))
 	}
 	return blackfriday.GoToNext
 }
@@ -178,7 +178,7 @@ func (*unwrapRenderer) renderHTMLBlock(w io.Writer, node *blackfriday.Node, ente
 	if len(node.Literal) > 0 {
 		_, err := w.Write(node.Literal)
 		if err != nil {
-			panic(fmt.Errorf("error writing markdown to buffer: %w"))
+			panic(fmt.Errorf("error writing markdown to buffer: %w", err))
 		}
 	}
 	// If a paragraph or other markdown element comes after HTML we need two line
@@ -199,7 +199,7 @@ func (*unwrapRenderer) renderHTMLSpan(w io.Writer, node *blackfriday.Node, enter
 	if len(node.Literal) > 0 {
 		_, err := w.Write(node.Literal)
 		if err != nil {
-			panic(fmt.Errorf("error writing markdown to buffer: %w"))
+			panic(fmt.Errorf("error writing markdown to buffer: %w", err))
 		}
 	}
 

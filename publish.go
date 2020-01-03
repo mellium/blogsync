@@ -246,7 +246,7 @@ Expects an API token to be exported as $%s.`, envToken),
 						ID: postID,
 					})
 					if err != nil {
-						debug.Println("error unpinning post %s: %v", err)
+						debug.Println("error unpinning post %s: %v", slug, err)
 					}
 				}
 
