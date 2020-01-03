@@ -98,10 +98,16 @@ func (*unwrapRenderer) renderImage(w io.Writer, node *blackfriday.Node, entering
 func (rend *unwrapRenderer) renderList(w io.Writer, node *blackfriday.Node, entering bool) blackfriday.WalkStatus {
 	if entering {
 		rend.listLevel++
+		if rend.listLevel == 1 {
+			io.WriteString(w, "\n")
+		}
 		return blackfriday.GoToNext
 	}
 
 	rend.listLevel--
+	if rend.listLevel == 0 {
+		io.WriteString(w, "\n")
+	}
 	return blackfriday.GoToNext
 }
 
@@ -134,9 +140,10 @@ func (*unwrapRenderer) renderHeading(w io.Writer, node *blackfriday.Node, enteri
 }
 
 func (rend *unwrapRenderer) renderBlockQuote(w io.Writer, node *blackfriday.Node, entering bool) blackfriday.WalkStatus {
+	io.WriteString(w, "\n")
 	if !entering {
-		io.WriteString(w, "\n")
 		rend.quoteLevel--
+		io.WriteString(w, "\n")
 		return blackfriday.GoToNext
 	}
 
@@ -212,8 +219,11 @@ func (rend *unwrapRenderer) renderPar(w io.Writer, node *blackfriday.Node, enter
 	}
 
 	// If we're in a block quote, render the starting mark.
+	for i := 0; i < rend.quoteLevel; i++ {
+		io.WriteString(w, ">")
+	}
 	if rend.quoteLevel > 0 {
-		io.WriteString(w, "> ")
+		io.WriteString(w, " ")
 	}
 
 	// TODO: this is jank, but I couldn't figure out how to put two lines between
