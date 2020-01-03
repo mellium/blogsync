@@ -150,9 +150,17 @@ Expects an API token to be exported as $%s.`, envToken),
 					return nil
 				}
 				body = bytes.TrimSpace(body)
-				body = blackfriday.Run(body, blackfriday.WithRenderer(&unwrapRenderer{
-					debug: debug,
-				}))
+				body = blackfriday.Run(body,
+					blackfriday.WithNoExtensions(),
+					blackfriday.WithExtensions(
+						blackfriday.CommonExtensions|blackfriday.Footnotes,
+					),
+					blackfriday.WithRenderer(&unwrapRenderer{
+						debug: debug,
+						htmlRenderer: blackfriday.NewHTMLRenderer(blackfriday.HTMLRendererParameters{
+							Flags: blackfriday.FootnoteReturnLinks,
+						}),
+					}))
 
 				var bodyBuf strings.Builder
 				err = compiledTmpl.Execute(&bodyBuf, tmplData{

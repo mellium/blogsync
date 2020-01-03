@@ -20,8 +20,10 @@ import (
 // core markdown standard instead of just handling newlines differently in the
 // web WYSIWYG editor.
 type unwrapRenderer struct {
-	listLevel  int
-	quoteLevel int
+	listLevel    int
+	quoteLevel   int
+	listType     blackfriday.ListType
+	htmlRenderer *blackfriday.HTMLRenderer
 
 	debug *log.Logger
 }
@@ -75,7 +77,13 @@ func (rend *unwrapRenderer) RenderNode(w io.Writer, node *blackfriday.Node, ente
 	return blackfriday.GoToNext
 }
 
-func (*unwrapRenderer) renderLink(w io.Writer, node *blackfriday.Node, entering bool) blackfriday.WalkStatus {
+func (rend *unwrapRenderer) renderLink(w io.Writer, node *blackfriday.Node, entering bool) blackfriday.WalkStatus {
+	// Write.as doesn't support the footnote extension to markdown, so if this is
+	// a footnote render it as HTML instead.
+	if node.LinkData.NoteID != 0 {
+		return rend.htmlRenderer.RenderNode(w, node, entering)
+	}
+
 	if entering {
 		fmt.Fprintf(w, "[")
 		return blackfriday.GoToNext
@@ -96,6 +104,19 @@ func (*unwrapRenderer) renderImage(w io.Writer, node *blackfriday.Node, entering
 }
 
 func (rend *unwrapRenderer) renderList(w io.Writer, node *blackfriday.Node, entering bool) blackfriday.WalkStatus {
+
+	// Footnotes aren't supported by write.as, so render the remaining nodes on
+	// this branch with the HTML renderer.
+	if node.IsFootnotesList ||
+		rend.listType&blackfriday.ListTypeTerm == blackfriday.ListTypeTerm ||
+		rend.listType&blackfriday.ListTypeDefinition == blackfriday.ListTypeDefinition {
+		node.Walk(func(node *blackfriday.Node, entering bool) blackfriday.WalkStatus {
+			return rend.htmlRenderer.RenderNode(w, node, entering)
+		})
+		return blackfriday.SkipChildren
+	}
+
+	rend.listType = node.ListData.ListFlags
 	if entering {
 		rend.listLevel++
 		if rend.listLevel == 1 {
@@ -112,13 +133,27 @@ func (rend *unwrapRenderer) renderList(w io.Writer, node *blackfriday.Node, ente
 }
 
 func (rend *unwrapRenderer) renderItem(w io.Writer, node *blackfriday.Node, entering bool) blackfriday.WalkStatus {
+	if node.IsFootnotesList ||
+		rend.listType&blackfriday.ListTypeTerm == blackfriday.ListTypeTerm ||
+		rend.listType&blackfriday.ListTypeDefinition == blackfriday.ListTypeDefinition {
+		//node.Walk(func(node *blackfriday.Node, entering bool) blackfriday.WalkStatus {
+		//	return rend.htmlRenderer.RenderNode(w, node, entering)
+		//})
+		return blackfriday.SkipChildren
+	}
+
 	if !entering {
 		return blackfriday.GoToNext
 	}
 	for i := 0; i < rend.listLevel; i++ {
 		fmt.Fprintf(w, "  ")
 	}
-	fmt.Fprintf(w, "* ")
+	switch {
+	case rend.listType&blackfriday.ListTypeOrdered == blackfriday.ListTypeOrdered:
+		fmt.Fprintf(w, "1. ")
+	default:
+		fmt.Fprintf(w, "* ")
+	}
 	return blackfriday.GoToNext
 }
 
