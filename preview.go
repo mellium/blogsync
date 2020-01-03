@@ -166,9 +166,26 @@ https://writefreely.org/
 				debug.Printf("error while executing writefreely: %v", err)
 			}
 
-			// TODO: this is jank. Manually spin up the process and wait on a log line
-			// or something (which is only slightly less jank, yay shelling out).
-			time.Sleep(3 * time.Second)
+			// Wait until writefreely becomes available.
+			var connected bool
+			for i := 0; i < 5; i++ {
+				const timeout = 1 * time.Second
+				logger.Printf("waiting %s for writefreely to accept connections…", timeout)
+				conn, err := net.Dial("tcp", net.JoinHostPort(bind, strconv.Itoa(port)))
+				if err == nil {
+					err = conn.Close()
+					if err != nil {
+						debug.Printf("error closing temporary TCP connection: %v", err)
+					}
+					logger.Println("connected to writefreely!")
+					connected = true
+					break
+				}
+				time.Sleep(timeout)
+			}
+			if !connected {
+				return fmt.Errorf("failed to connect to writefreely, did it start?")
+			}
 
 			client := writeas.NewClientWith(writeas.Config{
 				URL: "http://" + net.JoinHostPort(bind, strconv.Itoa(port)+"/api"),
