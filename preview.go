@@ -16,11 +16,11 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
-	"syscall"
 	"text/template"
 	"time"
 
 	"github.com/writeas/go-writeas/v2"
+	"mellium.im/blogsync/internal/browser"
 	"mellium.im/cli"
 )
 
@@ -161,17 +161,22 @@ https://writefreely.org/
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			err = tailWriteFreely(ctx, sigs, cfgFilePath, debug)
-			if err != nil {
-				debug.Printf("error while executing writefreely: %v", err)
-			}
+			go func() {
+				err = tailWriteFreely(ctx, cfgFilePath, debug)
+				if err != nil {
+					debug.Printf("error while executing writefreely: %v", err)
+				}
+				cancel()
+			}()
+
+			addr := net.JoinHostPort(bind, strconv.Itoa(port))
 
 			// Wait until writefreely becomes available.
 			var connected bool
 			for i := 0; i < 5; i++ {
 				const timeout = 1 * time.Second
 				logger.Printf("waiting %s for writefreely to accept connections…", timeout)
-				conn, err := net.Dial("tcp", net.JoinHostPort(bind, strconv.Itoa(port)))
+				conn, err := net.Dial("tcp", addr)
 				if err == nil {
 					err = conn.Close()
 					if err != nil {
@@ -187,8 +192,9 @@ https://writefreely.org/
 				return fmt.Errorf("failed to connect to writefreely, did it start?")
 			}
 
+			baseAddr := "http://" + addr
 			client := writeas.NewClientWith(writeas.Config{
-				URL: "http://" + net.JoinHostPort(bind, strconv.Itoa(port)+"/api"),
+				URL: baseAddr + "/api",
 			})
 			authUser, err := client.LogIn(adminUser, adminPass)
 			if err != nil {
@@ -201,7 +207,12 @@ https://writefreely.org/
 				return err
 			}
 
-			<-sigs
+			browser.Open(baseAddr)
+
+			select {
+			case <-sigs:
+			case <-ctx.Done():
+			}
 			return nil
 		},
 	}
@@ -219,7 +230,7 @@ func runWriteFreely(cfgFile string, debug *log.Logger, args ...string) error {
 	return nil
 }
 
-func tailWriteFreely(ctx context.Context, sigs chan<- os.Signal, cfgFile string, debug *log.Logger) error {
+func tailWriteFreely(ctx context.Context, cfgFile string, debug *log.Logger) error {
 	cmd := exec.CommandContext(ctx, binName, "-c", cfgFile)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -228,9 +239,7 @@ func tailWriteFreely(ctx context.Context, sigs chan<- os.Signal, cfgFile string,
 
 	debug.Printf("running %s with %v…\n", cmd.Path, cmd.Args)
 
-	// Also exit if SIGCHLD is sent (writefreely died).
-	signal.Notify(sigs, syscall.SIGCHLD)
-	return cmd.Start()
+	return cmd.Run()
 }
 
 func writeConfig(cfgFileName string, cfg writeFreelyConfig, debug *log.Logger) (err error) {
