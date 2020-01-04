@@ -202,7 +202,10 @@ https://writefreely.org/
 			}
 			debug.Printf("logged in as: %+v", authUser)
 
-			err = publishCmd(true, siteConfig, client, logger, debug).Exec()
+			opts := newPublishOpts(siteConfig)
+			opts.createCollections = true
+
+			err = publish(opts, siteConfig, client, logger, debug)
 			if err != nil {
 				return err
 			}
