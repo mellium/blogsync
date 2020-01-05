@@ -24,7 +24,7 @@ func convertCmd(logger, debug *log.Logger) *cli.Command {
 		dryRun  = false
 		content = "content/"
 	)
-	flags := flag.NewFlagSet("publish", flag.ContinueOnError)
+	flags := flag.NewFlagSet("convert", flag.ContinueOnError)
 	flags.BoolVar(&dryRun, "dry-run", dryRun, "Perform a trial run with no changes made")
 	flags.StringVar(&content, "content", content, "A directory containing pages and posts")
 
