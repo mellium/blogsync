@@ -103,6 +103,7 @@ func publish(opts publishOptions, siteConfig Config, client *writeas.Client, log
 		if err != nil {
 			return nil, fmt.Errorf("error compiling template file %s: %v", tmplFile, err)
 		}
+		compiledTmpl = compiledTmpl.Lookup(tmplFile)
 	} else {
 		tmplFile = defTmplName
 		// Otherwise, it is a raw template and we should compile it.
@@ -125,203 +126,7 @@ func publish(opts publishOptions, siteConfig Config, client *writeas.Client, log
 	posts = *p
 
 	err = blog.WalkPages(opts.content, func(pagePath string, info os.FileInfo, err error) error {
-		debug.Printf("opening %s", pagePath)
-		fd, err := os.Open(pagePath)
-		if err != nil {
-			logger.Printf("error opening %s, skipping: %v", pagePath, err)
-			return nil
-		}
-		defer func() {
-			if err := fd.Close(); err != nil {
-				debug.Printf("error closing %s: %v", pagePath, err)
-			}
-		}()
-
-		f := bufio.NewReader(fd)
-		meta := make(blog.Metadata)
-		header, err := meta.Decode(f)
-		if err != nil {
-			logger.Printf("error decoding metadata for %s, skipping: %v", pagePath, err)
-			return nil
-		}
-		// This may seem unnecessary, but I don't plan on supporting YAML
-		// headers forever to keep things simple, so go ahead and forbid
-		// publishing with them to encourage people to convert their blogs over.
-		if header == blog.HeaderYAML {
-			logger.Printf(`file %s has a YAML header, try converting it by running "%s convert", skipping`, pagePath, os.Args[0])
-			return nil
-		}
-
-		draft := meta.GetBool("draft")
-		if draft {
-			debug.Printf("skipping draft %s", pagePath)
-			return nil
-		}
-
-		title := meta.GetString("title")
-		if title == "" {
-			logger.Printf("invalid or empty title in %s, skipping", pagePath)
-			return nil
-		}
-
-		// Deliberately shadow collection so that we don't end up mutating the
-		// options struct.
-		collection := opts.collection
-		if col := meta.GetString("collection"); col != "" {
-			collection = col
-		}
-
-		body, err := ioutil.ReadAll(f)
-		if err != nil {
-			logger.Printf("error reading body from %s, skipping: %v", pagePath, err)
-			return nil
-		}
-		body = bytes.TrimSpace(body)
-		body = blackfriday.Run(body,
-			blackfriday.WithNoExtensions(),
-			blackfriday.WithExtensions(
-				blackfriday.CommonExtensions|blackfriday.Footnotes,
-			),
-			blackfriday.WithRenderer(&unwrapRenderer{
-				debug: debug,
-				htmlRenderer: blackfriday.NewHTMLRenderer(blackfriday.HTMLRendererParameters{
-					Flags: blackfriday.FootnoteReturnLinks,
-				}),
-			}))
-
-		var bodyBuf strings.Builder
-		err = compiledTmpl.ExecuteTemplate(&bodyBuf, tmplFile, tmplData{
-			Body:   string(body),
-			Meta:   meta,
-			Config: siteConfig,
-		})
-		if err != nil {
-			logger.Printf("error executing template for file %s: %v", pagePath, err)
-			return nil
-		}
-		if bodyBuf.Len() == 0 {
-			// Apparently write.as doesn't like posts that don't have a body.
-			logger.Printf("post %s has no body, skipping", pagePath)
-			return nil
-		}
-
-		slug := blog.Slug(pagePath, meta)
-		var existingPost *writeas.Post
-		for i, post := range posts {
-			var postCollection string
-			if post.Collection != nil {
-				postCollection = post.Collection.Alias
-			}
-
-			if slug == post.Slug && collection == postCollection {
-				existingPost = &post
-				posts = append(posts[:i], posts[i+1:]...)
-				break
-			}
-		}
-
-		created := timeOrDef(meta.GetTime("publishDate"), meta.GetTime("date"))
-		createdPtr := &created
-		if created.IsZero() {
-			createdPtr = nil
-		}
-		rtl := meta.GetBool("rtl")
-		lang := meta.GetString("lang")
-		if lang == "" {
-			lang = siteConfig.Language
-		}
-		updated := timeOrDef(meta.GetTime("lastmod"), created)
-
-		var postID, postTok string
-		if existingPost != nil {
-			postID = existingPost.ID
-			postTok = existingPost.Token
-		}
-		params := &writeas.PostParams{
-			ID:    postID,
-			Token: postTok,
-
-			Content:  bodyBuf.String(),
-			Created:  createdPtr,
-			Font:     orDef(meta.GetString("font"), "norm"),
-			IsRTL:    &rtl,
-			Language: &lang,
-			Slug:     slug,
-			Title:    title,
-			Updated:  &updated,
-
-			Collection: collection,
-		}
-
-		var skipUpdate bool
-		if existingPost == nil {
-			debug.Printf("publishing %s from %s", slug, pagePath)
-		} else {
-			if eqParams(existingPost, params) && !opts.force {
-				debug.Printf("no updates needed for %s, skipping", slug)
-				skipUpdate = true
-			} else {
-				debug.Printf("updating /%s (%q) from %s", slug, postID, pagePath)
-			}
-		}
-
-		if !opts.dryRun && !skipUpdate {
-			if opts.createCollections {
-				collections = createCollectionIfNotExist(collections, client, debug, &writeas.CollectionParams{
-					Alias: params.Collection,
-					Title: params.Collection,
-				})
-			}
-			if postID == "" {
-				post, err := client.CreatePost(params)
-				if err != nil {
-					logger.Printf("error creating post from %s: %v", pagePath, err)
-					return nil
-				}
-				postID = post.ID
-			} else {
-				// Write.as returns a generic 500 error if you set Created when
-				// updating a post, even if it's unchanged.
-				params.Created = nil
-				post, err := client.UpdatePost(postID, postTok, params)
-				if err != nil {
-					logger.Printf("error updating post %q from %s: %v", postID, pagePath, err)
-					return nil
-				}
-				postID = post.ID
-			}
-		}
-
-		// Right now there is no way to check if a post is pinned, so we have to
-		// assume that all posts may be pinned and always attempt to unpin them
-		// then re-pin any that should actually be pinned every time.
-		// This is not ideal.
-		debug.Printf("attempting to unpin post %s…", slug)
-		if !opts.dryRun {
-			err = client.UnpinPost(collection, &writeas.PinnedPostParams{
-				ID: postID,
-			})
-			if err != nil {
-				debug.Printf("error unpinning post %s: %v", slug, err)
-			}
-		}
-
-		pin, pinExists := meta["pin"]
-		ipin, pinInt := pin.(int64)
-		if pinExists && pinInt {
-			debug.Printf("attempting to pin post %s to position %d…", slug, int(ipin))
-			if !opts.dryRun {
-				err = client.PinPost(collection, &writeas.PinnedPostParams{
-					ID:       postID,
-					Position: int(ipin),
-				})
-				if err != nil {
-					debug.Printf("error pinning post %s to position %d: %v", slug, int(ipin), err)
-				}
-			}
-		}
-
-		return nil
+		return publishPost(pagePath, opts, siteConfig, posts, collections, compiledTmpl, client, logger, debug)
 	})
 	if err != nil {
 		return nil, err
@@ -343,6 +148,206 @@ func publish(opts publishOptions, siteConfig Config, client *writeas.Client, log
 	}
 
 	return collections, nil
+}
+
+func publishPost(pagePath string, opts publishOptions, siteConfig Config, posts []writeas.Post, collections []writeas.Collection, compiledTmpl *template.Template, client *writeas.Client, logger, debug *log.Logger) error {
+	debug.Printf("opening %s", pagePath)
+	fd, err := os.Open(pagePath)
+	if err != nil {
+		logger.Printf("error opening %s, skipping: %v", pagePath, err)
+		return nil
+	}
+	defer func() {
+		if err := fd.Close(); err != nil {
+			debug.Printf("error closing %s: %v", pagePath, err)
+		}
+	}()
+
+	f := bufio.NewReader(fd)
+	meta := make(blog.Metadata)
+	header, err := meta.Decode(f)
+	if err != nil {
+		logger.Printf("error decoding metadata for %s, skipping: %v", pagePath, err)
+		return nil
+	}
+	// This may seem unnecessary, but I don't plan on supporting YAML
+	// headers forever to keep things simple, so go ahead and forbid
+	// publishing with them to encourage people to convert their blogs over.
+	if header == blog.HeaderYAML {
+		logger.Printf(`file %s has a YAML header, try converting it by running "%s convert", skipping`, pagePath, os.Args[0])
+		return nil
+	}
+
+	draft := meta.GetBool("draft")
+	if draft {
+		debug.Printf("skipping draft %s", pagePath)
+		return nil
+	}
+
+	title := meta.GetString("title")
+	if title == "" {
+		logger.Printf("invalid or empty title in %s, skipping", pagePath)
+		return nil
+	}
+
+	// Deliberately shadow collection so that we don't end up mutating the
+	// options struct.
+	collection := opts.collection
+	if col := meta.GetString("collection"); col != "" {
+		collection = col
+	}
+
+	body, err := ioutil.ReadAll(f)
+	if err != nil {
+		logger.Printf("error reading body from %s, skipping: %v", pagePath, err)
+		return nil
+	}
+	body = bytes.TrimSpace(body)
+	body = blackfriday.Run(body,
+		blackfriday.WithNoExtensions(),
+		blackfriday.WithExtensions(
+			blackfriday.CommonExtensions|blackfriday.Footnotes,
+		),
+		blackfriday.WithRenderer(&unwrapRenderer{
+			debug: debug,
+			htmlRenderer: blackfriday.NewHTMLRenderer(blackfriday.HTMLRendererParameters{
+				Flags: blackfriday.FootnoteReturnLinks,
+			}),
+		}))
+
+	var bodyBuf strings.Builder
+	err = compiledTmpl.Execute(&bodyBuf, tmplData{
+		Body:   string(body),
+		Meta:   meta,
+		Config: siteConfig,
+	})
+	if err != nil {
+		logger.Printf("error executing template for file %s: %v", pagePath, err)
+		return nil
+	}
+	if bodyBuf.Len() == 0 {
+		// Apparently write.as doesn't like posts that don't have a body.
+		logger.Printf("post %s has no body, skipping", pagePath)
+		return nil
+	}
+
+	slug := blog.Slug(pagePath, meta)
+	var existingPost *writeas.Post
+	for i, post := range posts {
+		var postCollection string
+		if post.Collection != nil {
+			postCollection = post.Collection.Alias
+		}
+
+		if slug == post.Slug && collection == postCollection {
+			existingPost = &post
+			posts = append(posts[:i], posts[i+1:]...)
+			break
+		}
+	}
+
+	created := timeOrDef(meta.GetTime("publishDate"), meta.GetTime("date"))
+	createdPtr := &created
+	if created.IsZero() {
+		createdPtr = nil
+	}
+	rtl := meta.GetBool("rtl")
+	lang := meta.GetString("lang")
+	if lang == "" {
+		lang = siteConfig.Language
+	}
+	updated := timeOrDef(meta.GetTime("lastmod"), created)
+
+	var postID, postTok string
+	if existingPost != nil {
+		postID = existingPost.ID
+		postTok = existingPost.Token
+	}
+	params := &writeas.PostParams{
+		ID:    postID,
+		Token: postTok,
+
+		Content:  bodyBuf.String(),
+		Created:  createdPtr,
+		Font:     orDef(meta.GetString("font"), "norm"),
+		IsRTL:    &rtl,
+		Language: &lang,
+		Slug:     slug,
+		Title:    title,
+		Updated:  &updated,
+
+		Collection: collection,
+	}
+
+	var skipUpdate bool
+	if existingPost == nil {
+		debug.Printf("publishing %s from %s", slug, pagePath)
+	} else {
+		if eqParams(existingPost, params) && !opts.force {
+			debug.Printf("no updates needed for %s, skipping", slug)
+			skipUpdate = true
+		} else {
+			debug.Printf("updating /%s (%q) from %s", slug, postID, pagePath)
+		}
+	}
+
+	if !opts.dryRun && !skipUpdate {
+		if opts.createCollections {
+			collections = createCollectionIfNotExist(collections, client, debug, &writeas.CollectionParams{
+				Alias: params.Collection,
+				Title: params.Collection,
+			})
+		}
+		if postID == "" {
+			post, err := client.CreatePost(params)
+			if err != nil {
+				logger.Printf("error creating post from %s: %v", pagePath, err)
+				return nil
+			}
+			postID = post.ID
+		} else {
+			// Write.as returns a generic 500 error if you set Created when
+			// updating a post, even if it's unchanged.
+			params.Created = nil
+			post, err := client.UpdatePost(postID, postTok, params)
+			if err != nil {
+				logger.Printf("error updating post %q from %s: %v", postID, pagePath, err)
+				return nil
+			}
+			postID = post.ID
+		}
+	}
+
+	// Right now there is no way to check if a post is pinned, so we have to
+	// assume that all posts may be pinned and always attempt to unpin them
+	// then re-pin any that should actually be pinned every time.
+	// This is not ideal.
+	debug.Printf("attempting to unpin post %s…", slug)
+	if !opts.dryRun {
+		err = client.UnpinPost(collection, &writeas.PinnedPostParams{
+			ID: postID,
+		})
+		if err != nil {
+			debug.Printf("error unpinning post %s: %v", slug, err)
+		}
+	}
+
+	pin, pinExists := meta["pin"]
+	ipin, pinInt := pin.(int64)
+	if pinExists && pinInt {
+		debug.Printf("attempting to pin post %s to position %d…", slug, int(ipin))
+		if !opts.dryRun {
+			err = client.PinPost(collection, &writeas.PinnedPostParams{
+				ID:       postID,
+				Position: int(ipin),
+			})
+			if err != nil {
+				debug.Printf("error pinning post %s to position %d: %v", slug, int(ipin), err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func createCollectionIfNotExist(colls []writeas.Collection, client *writeas.Client, debug *log.Logger, coll *writeas.CollectionParams) []writeas.Collection {
