@@ -19,7 +19,9 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/writeas/go-writeas/v2"
+	"mellium.im/blogsync/internal/blog"
 	"mellium.im/blogsync/internal/browser"
 	"mellium.im/cli"
 )
@@ -205,7 +207,7 @@ https://writefreely.org/
 			}
 			debug.Printf("logged in as: %+v", authUser)
 
-			_, collections, err := publish(opts, siteConfig, client, logger, debug)
+			compiledTmpl, posted, collections, err := publish(opts, siteConfig, client, logger, debug)
 			if err != nil {
 				return err
 			}
@@ -232,20 +234,39 @@ https://writefreely.org/
 					if !ok {
 						return nil
 					}
-					logger.Printf("event on file watcher: %v", event)
-					for _, coll := range collections {
-						// TODO: deleting all posts and starting over is easy but slow. Get the
-						// previous/new slug (if different) and create/delete pages as necessary just
-						// for the file that changed.
-						err = deleteAll(coll.Alias, client)
+					if ext := filepath.Ext(event.Name); ext != ".md" && ext != ".markdown" {
+						debug.Printf("skipping event on non-markdown file %s…", event.Name)
+						continue
+					}
+					debug.Printf("event on file watcher: %v", event)
+					switch event.Op {
+					case fsnotify.Chmod:
+						// Nothing to do here, skip this event.
+						continue
+					case fsnotify.Remove, fsnotify.Rename:
+						posted, err = removePost(event.Name, posted, client)
 						if err != nil {
-							logger.Printf("error clearing old posts: %v", err)
+							logger.Printf("error removing post %s: %v", event.Name, err)
 						}
+						continue
+					case fsnotify.Write:
+						// Remove and then don't continue, we'll publish it again in just a
+						// moment.
+						posted, err = removePost(event.Name, posted, client)
+						if err != nil {
+							logger.Printf("error removing old post %s before update: %v", event.Name, err)
+						}
+						// case fsnotify.Create:
+						// Nothing to do here, just continue to publishing.
 					}
 
-					_, collections, err = publish(opts, siteConfig, client, logger, debug)
+					newPost, err := publishPost(event.Name, opts, siteConfig, nil, collections, compiledTmpl, client, logger, debug)
 					if err != nil {
-						logger.Printf("error republishing posts: %v", err)
+						logger.Printf("error publishing new file %s: %v", event.Name, err)
+						continue
+					}
+					if newPost != nil {
+						posted = append(posted, *newPost)
 					}
 				case err, ok := <-watcher.Errors:
 					if !ok {
@@ -341,24 +362,39 @@ func mkTmp(cfg writeFreelyConfig, debug *log.Logger) (tmpDir string, e error) {
 	return tmpDir, nil
 }
 
-func deleteAll(collection string, client *writeas.Client) error {
-	// The wire.as API documentation doesn't mention any limit or paging, but only
-	// 10 posts ever appear to be returned so just iterate until we can't get
-	// anymore posts.
-	for {
-		posts, err := client.GetCollectionPosts(collection)
+func decodeMeta(fname string, meta blog.Metadata, debug *log.Logger) error {
+	f, err := os.Open(fname)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err := f.Close()
 		if err != nil {
-			return err
+			debug.Printf("error closing %s while reading metadata: %v", fname, err)
 		}
-		p := *posts
-		if len(p) == 0 {
-			return nil
-		}
-		for _, post := range p {
-			err := client.DeletePost(post.ID, post.Token)
+	}()
+	header, err := meta.Decode(f)
+	if err != nil {
+		return err
+	}
+	if header != blog.HeaderTOML {
+		return fmt.Errorf("expected TOML header but found something else, try the convert command")
+	}
+
+	return nil
+}
+
+func removePost(fname string, posted []minimalPost, client *writeas.Client) ([]minimalPost, error) {
+	// Definitely no metadata, don't bother trying to open the file.
+	for i, post := range posted {
+		if post.filename == fname {
+			err := client.DeletePost(post.id, post.token)
 			if err != nil {
-				return err
+				return posted, err
 			}
+			posted = append(posted[:i], posted[i+1:]...)
+			return posted, err
 		}
 	}
+	return posted, nil
 }

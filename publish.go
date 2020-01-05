@@ -43,6 +43,13 @@ type publishOptions struct {
 	tmpl              string
 }
 
+type minimalPost struct {
+	filename string
+	id       string
+	slug     string
+	token    string
+}
+
 func newPublishOpts(siteConfig Config) publishOptions {
 	return publishOptions{
 		collection: siteConfig.Collection,
@@ -69,14 +76,15 @@ func publishCmd(siteConfig Config, client *writeas.Client, logger, debug *log.Lo
 Expects an API token to be exported as $%s.`, envToken),
 		Flags: flags,
 		Run: func(cmd *cli.Command, args ...string) error {
-			_, _, err := publish(opts, siteConfig, client, logger, debug)
+			_, _, _, err := publish(opts, siteConfig, client, logger, debug)
 			return err
 		},
 	}
 }
 
-func publish(opts publishOptions, siteConfig Config, client *writeas.Client, logger, debug *log.Logger) (*template.Template, []writeas.Collection, error) {
+func publish(opts publishOptions, siteConfig Config, client *writeas.Client, logger, debug *log.Logger) (*template.Template, []minimalPost, []writeas.Collection, error) {
 	var collections []writeas.Collection
+
 	if opts.createCollections {
 		colls, err := client.GetUserCollections()
 		if err != nil {
@@ -101,7 +109,7 @@ func publish(opts publishOptions, siteConfig Config, client *writeas.Client, log
 		// should load.
 		compiledTmpl, err = compiledTmpl.ParseFiles(tmplFile)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error compiling template file %s: %v", tmplFile, err)
+			return nil, nil, nil, fmt.Errorf("error compiling template file %s: %v", tmplFile, err)
 		}
 		compiledTmpl = compiledTmpl.Lookup(tmplFile)
 	} else {
@@ -109,14 +117,14 @@ func publish(opts publishOptions, siteConfig Config, client *writeas.Client, log
 		// Otherwise, it is a raw template and we should compile it.
 		compiledTmpl, err = compiledTmpl.Parse(opts.tmpl)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error compiling template: %v", err)
+			return nil, nil, nil, fmt.Errorf("error compiling template: %v", err)
 		}
 	}
 
 	var posts []writeas.Post
 	p, err := client.GetUserPosts()
 	if err != nil {
-		return nil, nil, fmt.Errorf("error fetching users posts: %v", err)
+		return nil, nil, nil, fmt.Errorf("error fetching users posts: %v", err)
 	}
 	// For now, the writeas SDK returns things with a lot of unnecessary
 	// indirection that makes the library hard to use.
@@ -125,11 +133,16 @@ func publish(opts publishOptions, siteConfig Config, client *writeas.Client, log
 	// See: https://github.com/writeas/go-writeas/pull/19
 	posts = *p
 
+	posted := make([]minimalPost, 0, len(posts))
 	err = blog.WalkPages(opts.content, func(pagePath string, info os.FileInfo, err error) error {
-		return publishPost(pagePath, opts, siteConfig, posts, collections, compiledTmpl, client, logger, debug)
+		newPost, err := publishPost(pagePath, opts, siteConfig, posts, collections, compiledTmpl, client, logger, debug)
+		if newPost != nil {
+			posted = append(posted, *newPost)
+		}
+		return err
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Delete remaining posts for which we couldn't find a matching file.
@@ -147,15 +160,15 @@ func publish(opts publishOptions, siteConfig Config, client *writeas.Client, log
 		logger.Printf("no file found matching post %q, re-run with --delete to remove", post.Slug)
 	}
 
-	return compiledTmpl, collections, nil
+	return compiledTmpl, posted, collections, nil
 }
 
-func publishPost(pagePath string, opts publishOptions, siteConfig Config, posts []writeas.Post, collections []writeas.Collection, compiledTmpl *template.Template, client *writeas.Client, logger, debug *log.Logger) error {
+func publishPost(pagePath string, opts publishOptions, siteConfig Config, posts []writeas.Post, collections []writeas.Collection, compiledTmpl *template.Template, client *writeas.Client, logger, debug *log.Logger) (post *minimalPost, err error) {
 	debug.Printf("opening %s", pagePath)
 	fd, err := os.Open(pagePath)
 	if err != nil {
 		logger.Printf("error opening %s, skipping: %v", pagePath, err)
-		return nil
+		return nil, nil
 	}
 	defer func() {
 		if err := fd.Close(); err != nil {
@@ -168,26 +181,26 @@ func publishPost(pagePath string, opts publishOptions, siteConfig Config, posts 
 	header, err := meta.Decode(f)
 	if err != nil {
 		logger.Printf("error decoding metadata for %s, skipping: %v", pagePath, err)
-		return nil
+		return nil, nil
 	}
 	// This may seem unnecessary, but I don't plan on supporting YAML
 	// headers forever to keep things simple, so go ahead and forbid
 	// publishing with them to encourage people to convert their blogs over.
 	if header == blog.HeaderYAML {
 		logger.Printf(`file %s has a YAML header, try converting it by running "%s convert", skipping`, pagePath, os.Args[0])
-		return nil
+		return nil, nil
 	}
 
 	draft := meta.GetBool("draft")
 	if draft {
 		debug.Printf("skipping draft %s", pagePath)
-		return nil
+		return nil, nil
 	}
 
 	title := meta.GetString("title")
 	if title == "" {
 		logger.Printf("invalid or empty title in %s, skipping", pagePath)
-		return nil
+		return nil, nil
 	}
 
 	// Deliberately shadow collection so that we don't end up mutating the
@@ -200,7 +213,7 @@ func publishPost(pagePath string, opts publishOptions, siteConfig Config, posts 
 	body, err := ioutil.ReadAll(f)
 	if err != nil {
 		logger.Printf("error reading body from %s, skipping: %v", pagePath, err)
-		return nil
+		return nil, nil
 	}
 	body = bytes.TrimSpace(body)
 	body = blackfriday.Run(body,
@@ -223,12 +236,12 @@ func publishPost(pagePath string, opts publishOptions, siteConfig Config, posts 
 	})
 	if err != nil {
 		logger.Printf("error executing template for file %s: %v", pagePath, err)
-		return nil
+		return nil, nil
 	}
 	if bodyBuf.Len() == 0 {
 		// Apparently write.as doesn't like posts that don't have a body.
 		logger.Printf("post %s has no body, skipping", pagePath)
-		return nil
+		return nil, nil
 	}
 
 	slug := blog.Slug(pagePath, meta)
@@ -302,9 +315,10 @@ func publishPost(pagePath string, opts publishOptions, siteConfig Config, posts 
 			post, err := client.CreatePost(params)
 			if err != nil {
 				logger.Printf("error creating post from %s: %v", pagePath, err)
-				return nil
+				return nil, nil
 			}
 			postID = post.ID
+			postTok = post.Token
 		} else {
 			// Write.as returns a generic 500 error if you set Created when
 			// updating a post, even if it's unchanged.
@@ -312,9 +326,10 @@ func publishPost(pagePath string, opts publishOptions, siteConfig Config, posts 
 			post, err := client.UpdatePost(postID, postTok, params)
 			if err != nil {
 				logger.Printf("error updating post %q from %s: %v", postID, pagePath, err)
-				return nil
+				return nil, nil
 			}
 			postID = post.ID
+			postTok = post.Token
 		}
 	}
 
@@ -347,7 +362,12 @@ func publishPost(pagePath string, opts publishOptions, siteConfig Config, posts 
 		}
 	}
 
-	return nil
+	return &minimalPost{
+		filename: pagePath,
+		slug:     slug,
+		id:       postID,
+		token:    postTok,
+	}, nil
 }
 
 func createCollectionIfNotExist(colls []writeas.Collection, client *writeas.Client, debug *log.Logger, coll *writeas.CollectionParams) []writeas.Collection {
