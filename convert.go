@@ -123,16 +123,16 @@ backup or commit all files to source control before converting them.`,
 				// Write the new metadata to the file
 				_, err = fmt.Fprint(fd, "+++\n")
 				if err != nil {
-					log.Printf("could not write header start to %s: %v", path, err)
+					logger.Printf("could not write header start to %s: %v", path, err)
 				}
 				e := toml.NewEncoder(fd)
 				err = e.Encode(meta)
 				if err != nil {
-					log.Printf("error encoding TOML in %s: %v", path, err)
+					logger.Printf("error encoding TOML in %s: %v", path, err)
 				}
 				_, err = fmt.Fprint(fd, "+++\n")
 				if err != nil {
-					log.Printf("could not write header close to %s: %v", path, err)
+					logger.Printf("could not write header close to %s: %v", path, err)
 				}
 
 				// If there is no body, we're done. Don't bother adding an extra
@@ -143,7 +143,7 @@ backup or commit all files to source control before converting them.`,
 
 				_, err = fd.Write(body)
 				if err != nil {
-					log.Printf("failed to write body to %s: %v", path, err)
+					logger.Printf("failed to write body to %s: %v", path, err)
 				}
 				return nil
 			})
