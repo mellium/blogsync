@@ -146,21 +146,22 @@ https://writefreely.org/
 
 			var cfgFilePath = filepath.Join(tmpDir, cfgFileName)
 
-			err = runWriteFreely(cfgFilePath, debug, "-gen-keys")
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			err = tailWriteFreely(ctx, cfgFilePath, debug, "-gen-keys")
 			if err != nil {
 				return err
 			}
-			err = runWriteFreely(cfgFilePath, debug, "-init-db")
+			err = tailWriteFreely(ctx, cfgFilePath, debug, "-init-db")
 			if err != nil {
 				return err
 			}
-			err = runWriteFreely(cfgFilePath, debug, "-create-admin", fmt.Sprintf("%s:%s", adminUser, adminPass))
+			err = tailWriteFreely(ctx, cfgFilePath, debug, "-create-admin", fmt.Sprintf("%s:%s", adminUser, adminPass))
 			if err != nil {
 				return err
 			}
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
 			go func() {
 				err = tailWriteFreely(ctx, cfgFilePath, debug)
 				if err != nil {
@@ -221,20 +222,9 @@ https://writefreely.org/
 	}
 }
 
-func runWriteFreely(cfgFile string, debug *log.Logger, args ...string) error {
+func tailWriteFreely(ctx context.Context, cfgFile string, debug *log.Logger, args ...string) error {
 	args = append([]string{"-c", cfgFile}, args...)
-	cmd := exec.Command(binName, args...)
-	debug.Printf("running %s with %v…\n--Start output--", cmd.Path, cmd.Args)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(debug.Writer(), "%s\n--End of output--\n", output)
-	return nil
-}
-
-func tailWriteFreely(ctx context.Context, cfgFile string, debug *log.Logger) error {
-	cmd := exec.CommandContext(ctx, binName, "-c", cfgFile)
+	cmd := exec.CommandContext(ctx, binName, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
