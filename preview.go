@@ -92,16 +92,18 @@ default_visibility = public
 `
 
 func previewCmd(siteConfig Config, logger, debug *log.Logger) *cli.Command {
+	opts := newPublishOpts(siteConfig)
+	opts.createCollections = true
+
 	var (
-		port    = 8080
-		bind    = "127.0.0.1"
-		content = "content/"
-		res     = "/usr/share/writefreely/"
+		port = 8080
+		bind = "127.0.0.1"
+		res  = "/usr/share/writefreely/"
 	)
 	flags := flag.NewFlagSet("preview", flag.ContinueOnError)
 	flags.IntVar(&port, "port", port, "The port for writefreely to bind to")
 	flags.StringVar(&bind, "addr", bind, "The address the server should bind to")
-	flags.StringVar(&content, "content", content, "A directory containing pages and posts")
+	flags.StringVar(&opts.content, "content", opts.content, "A directory containing pages and posts")
 	flags.StringVar(&res, "resources", res, "A directory containing writefreelys templates and static assets")
 
 	return &cli.Command{
@@ -203,21 +205,55 @@ https://writefreely.org/
 			}
 			debug.Printf("logged in as: %+v", authUser)
 
-			opts := newPublishOpts(siteConfig)
-			opts.createCollections = true
-
-			err = publish(opts, siteConfig, client, logger, debug)
+			collections, err := publish(opts, siteConfig, client, logger, debug)
 			if err != nil {
 				return err
 			}
 
 			browser.Open(baseAddr)
 
-			select {
-			case <-sigs:
-			case <-ctx.Done():
+			watcher, err := newWatcher(opts.content, debug)
+			if err != nil {
+				return fmt.Errorf("error watching %s for changes: %w", opts.content, err)
 			}
-			return nil
+			defer func() {
+				err := watcher.Close()
+				if err != nil {
+					debug.Printf("error closing %s watcher: %v", opts.content, err)
+				}
+			}()
+			for {
+				select {
+				case <-sigs:
+					return nil
+				case <-ctx.Done():
+					return nil
+				case event, ok := <-watcher.Events:
+					if !ok {
+						return nil
+					}
+					logger.Printf("event on file watcher: %v", event)
+					for _, coll := range collections {
+						// TODO: deleting all posts and starting over is easy but slow. Get the
+						// previous/new slug (if different) and create/delete pages as necessary just
+						// for the file that changed.
+						err = deleteAll(coll.Alias, client)
+						if err != nil {
+							logger.Printf("error clearing old posts: %v", err)
+						}
+					}
+
+					collections, err = publish(opts, siteConfig, client, logger, debug)
+					if err != nil {
+						logger.Printf("error republishing posts: %v", err)
+					}
+				case err, ok := <-watcher.Errors:
+					if !ok {
+						return nil
+					}
+					logger.Printf("error on watcher: %v", err)
+				}
+			}
 		},
 	}
 }
@@ -303,4 +339,26 @@ func mkTmp(cfg writeFreelyConfig, debug *log.Logger) (tmpDir string, e error) {
 	}
 
 	return tmpDir, nil
+}
+
+func deleteAll(collection string, client *writeas.Client) error {
+	// The wire.as API documentation doesn't mention any limit or paging, but only
+	// 10 posts ever appear to be returned so just iterate until we can't get
+	// anymore posts.
+	for {
+		posts, err := client.GetCollectionPosts(collection)
+		if err != nil {
+			return err
+		}
+		p := *posts
+		if len(p) == 0 {
+			return nil
+		}
+		for _, post := range p {
+			err := client.DeletePost(post.ID, post.Token)
+			if err != nil {
+				return err
+			}
+		}
+	}
 }

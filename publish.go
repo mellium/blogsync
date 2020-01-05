@@ -69,12 +69,13 @@ func publishCmd(siteConfig Config, client *writeas.Client, logger, debug *log.Lo
 Expects an API token to be exported as $%s.`, envToken),
 		Flags: flags,
 		Run: func(cmd *cli.Command, args ...string) error {
-			return publish(opts, siteConfig, client, logger, debug)
+			_, err := publish(opts, siteConfig, client, logger, debug)
+			return err
 		},
 	}
 }
 
-func publish(opts publishOptions, siteConfig Config, client *writeas.Client, logger, debug *log.Logger) error {
+func publish(opts publishOptions, siteConfig Config, client *writeas.Client, logger, debug *log.Logger) ([]writeas.Collection, error) {
 	var collections []writeas.Collection
 	if opts.createCollections {
 		colls, err := client.GetUserCollections()
@@ -100,21 +101,21 @@ func publish(opts publishOptions, siteConfig Config, client *writeas.Client, log
 		// should load.
 		compiledTmpl, err = compiledTmpl.ParseFiles(tmplFile)
 		if err != nil {
-			return fmt.Errorf("error compiling template file %s: %v", tmplFile, err)
+			return nil, fmt.Errorf("error compiling template file %s: %v", tmplFile, err)
 		}
 	} else {
 		tmplFile = defTmplName
 		// Otherwise, it is a raw template and we should compile it.
 		compiledTmpl, err = compiledTmpl.Parse(opts.tmpl)
 		if err != nil {
-			return fmt.Errorf("error compiling template: %v", err)
+			return nil, fmt.Errorf("error compiling template: %v", err)
 		}
 	}
 
 	var posts []writeas.Post
 	p, err := client.GetUserPosts()
 	if err != nil {
-		return fmt.Errorf("error fetching users posts: %v", err)
+		return nil, fmt.Errorf("error fetching users posts: %v", err)
 	}
 	// For now, the writeas SDK returns things with a lot of unnecessary
 	// indirection that makes the library hard to use.
@@ -323,7 +324,7 @@ func publish(opts publishOptions, siteConfig Config, client *writeas.Client, log
 		return nil
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Delete remaining posts for which we couldn't find a matching file.
@@ -341,7 +342,7 @@ func publish(opts publishOptions, siteConfig Config, client *writeas.Client, log
 		logger.Printf("no file found matching post %q, re-run with --delete to remove", post.Slug)
 	}
 
-	return nil
+	return collections, nil
 }
 
 func createCollectionIfNotExist(colls []writeas.Collection, client *writeas.Client, debug *log.Logger, coll *writeas.CollectionParams) []writeas.Collection {
