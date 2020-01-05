@@ -205,7 +205,7 @@ https://writefreely.org/
 			}
 			debug.Printf("logged in as: %+v", authUser)
 
-			collections, err := publish(opts, siteConfig, client, logger, debug)
+			_, collections, err := publish(opts, siteConfig, client, logger, debug)
 			if err != nil {
 				return err
 			}
@@ -243,7 +243,7 @@ https://writefreely.org/
 						}
 					}
 
-					collections, err = publish(opts, siteConfig, client, logger, debug)
+					_, collections, err = publish(opts, siteConfig, client, logger, debug)
 					if err != nil {
 						logger.Printf("error republishing posts: %v", err)
 					}
